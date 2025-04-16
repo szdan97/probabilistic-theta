@@ -4,6 +4,10 @@ import hu.bme.mit.theta.analysis.InitFunc
 import hu.bme.mit.theta.analysis.Prec
 import hu.bme.mit.theta.analysis.expr.ExprState
 import hu.bme.mit.theta.analysis.expr.StmtAction
+import hu.bme.mit.theta.common.visualization.EdgeAttributes
+import hu.bme.mit.theta.common.visualization.Graph
+import hu.bme.mit.theta.common.visualization.NodeAttributes
+import hu.bme.mit.theta.common.visualization.Shape
 import hu.bme.mit.theta.core.decl.Decl
 import hu.bme.mit.theta.core.decl.Decls
 import hu.bme.mit.theta.core.decl.VarDecl
@@ -31,6 +35,7 @@ import hu.bme.mit.theta.prob.analysis.jani.SMDP.ActionLabel.InnerActionLabel
 import hu.bme.mit.theta.prob.analysis.jani.SMDP.ActionLabel.StandardActionLabel
 import hu.bme.mit.theta.probabilistic.FiniteDistribution
 import hu.bme.mit.theta.probabilistic.Goal
+import java.awt.Color
 
 /**
  * A symbolic MDP class based on the MDP subset of JANI models.
@@ -72,6 +77,10 @@ class SMDP(
             else
                 throw RuntimeException("$expr of type ${expr.type} cannot be assigned to $ref of type ${ref.type}")
 
+        override fun toString(): String {
+            return "($index) ${ref.name}=$expr"
+        }
+
     }
     class Edge(
         val sourceLoc: Location,
@@ -86,13 +95,14 @@ class SMDP(
         val assignments: List<Assignment>,
         val loc: Location
     )
-    class ComposedDestination(
+    data class ComposedDestination(
         val probability: Expr<RatType>,
         val assignments: List<Assignment>,
         val locs: List<Location>
     )
 
     class Automaton(
+        val name: String,
         val locations: Collection<Location>,
         val initLocs: Collection<Location>,
         val actions: Collection<ActionLabel>,
@@ -104,6 +114,7 @@ class SMDP(
 
     class AutomatonInstance(template: Automaton) {
         val id = template.numInstances++
+        val name = "${template.name}_$id"
 
         private val varLUT = template.localVars.associateWith {
             Decls.Var(it.name+"_$id", it.type)
@@ -150,6 +161,49 @@ class SMDP(
         }
 
         val initLocs = template.initLocs.map { locLUT[it]!! }
+
+        internal fun visualize(G: Graph) {
+            var nextProbNodeId = 0
+            val gid = this.name
+            G.addCompositeNode(gid, NodeAttributes.builder()
+                .shape(Shape.RECTANGLE)
+                .label(this.name)
+                .build()
+            )
+            val globalsid = gid+"_globals"
+            G.addNode(gid+"_globals", NodeAttributes.builder()
+                .shape(Shape.RECTANGLE)
+                .label("vars: \n${localVars.map { "${it.name}: ${it.type}" }.joinToString("\n")}")
+                .build())
+            G.setChild(gid, globalsid)
+
+            val locToId = hashMapOf<Location, String>()
+            for (loc in locs) {
+                val locid = gid+loc.name
+                G.addNode(locid, NodeAttributes.builder()
+                    .shape(Shape.CIRCLE).label(loc.name).build()
+                )
+                G.setChild(gid, gid+loc.name)
+                locToId[loc] = locid
+            }
+            for (edge in edges) {
+                val probNodeId = "${gid}_prob_${nextProbNodeId++}"
+                G.addNode(probNodeId, NodeAttributes.builder()
+                    .shape(Shape.RECTANGLE)
+                    .fillColor(Color.GRAY)
+                    .build())
+                G.setChild(gid, probNodeId)
+                G.addEdge(locToId[edge.sourceLoc]!!, probNodeId, EdgeAttributes.builder()
+                    .label("[${edge.guard}]")
+                    .build())
+                for (destination in edge.destinations) {
+                    G.addEdge(probNodeId, locToId[destination.loc]!!, EdgeAttributes.builder()
+                        .label("${destination.probability}: ${destination.assignments}")
+                        .build()
+                    )
+                }
+            }
+        }
     }
 
     fun resetTransientsStmt(): Stmt = SequenceStmt(transientInitialValueMap.entries.mapNotNull {
@@ -162,6 +216,28 @@ class SMDP(
 
     fun getAllVars() =
         globalVars + automata.flatMap(AutomatonInstance::localVars)
+
+    fun visualize(): Graph {
+        val G = Graph("Model", "Model")
+        for (automaton in automata) {
+            automaton.visualize(G)
+        }
+        val globalInfo = StringBuilder()
+        globalInfo.appendLine("Global vars:")
+        for (globalVar in globalVars) {
+            globalInfo.appendLine("${globalVar.name}: ${globalVar.type}")
+        }
+        globalInfo.appendLine("Properties:")
+        for (property in properties) {
+            globalInfo.appendLine(property)
+        }
+        G.addNode("__global_info",
+            NodeAttributes.builder()
+                .shape(Shape.RECTANGLE)
+                .label(globalInfo.toString())
+                .build())
+        return G
+    }
 }
 
 data class SMDPState<D: ExprState>(
@@ -194,7 +270,7 @@ data class SMDPReachabilityTask(
     val postStepAdditions: List<Stmt>
 )
 
-class SMDPCommandAction(
+data class SMDPCommandAction(
     val destination: SMDP.ComposedDestination,
     val smdp: SMDP,
     val preActionStmts: List<Stmt> = listOf(),
@@ -257,7 +333,7 @@ class SmdpCommandLts<D: ExprState>(val smdp: SMDP): ProbabilisticCommandLTS<SMDP
             >()
 
     private fun edgesToCommand(es: List<SMDP.Edge>, currState: SMDPState<*>): ProbabilisticCommand<SMDPCommandAction> {
-        val fullGuard = BoolExprs.And(es.map { it.guard })
+        val fullGuard = SmartBoolExprs.And(es.map { it.guard })
         val resolutions = es.fold(listOf<List<SMDP.Destination>>(listOf())) { acc, curr ->
             acc.flatMap { prefix ->
                 curr.destinations.map { new -> prefix + new  }
@@ -353,3 +429,121 @@ fun nextLocs(currLocs: List<SMDP.Location>, destLocs: List<SMDP.Location>): List
     return res
 }
 
+sealed class SMDPProperty(
+    val name: String
+) {
+    class ProbabilityProperty(name: String, val optimType: Goal, val pathFormula: SMDPPathFormula) : SMDPProperty(name) {
+        override fun toString(): String {
+            return "$name: P_$optimType($pathFormula)=?"
+        }
+    }
+
+    class ExpectationProperty(
+        name: String, val optimType: Goal, val rewardExpr: Expr<RatType>, val until: Expr<BoolType>,
+        val accumulateRewardOnExit: Boolean, val accumulateRewardAfterStep: Boolean
+    ) : SMDPProperty(name) {
+        override fun toString(): String {
+            val acc = arrayListOf<String>()
+            if(accumulateRewardOnExit) acc.add("exit")
+            if(accumulateRewardAfterStep) acc.add("step")
+            val U =
+                if (until == BoolExprs.True()) ""
+                else " U $until"
+            return "$name: E_$optimType($rewardExpr$U)=? $acc"
+        }
+    }
+
+    // TODO: accumulation?
+    class SteadyStateProperty(name: String, val optimType: Goal, val rewardExpr: Expr<RatType>) : SMDPProperty(name) {
+        override fun toString(): String {
+            return "$name: S_$optimType($rewardExpr)=?"
+        }
+    }
+
+    class PathQuantifierProperty(name: String, val type: SMDPPathFormula.Quantifier, val pathFormula: SMDPPathFormula) : SMDPProperty(name) {
+        override fun toString(): String {
+            return "$name: $type $pathFormula"
+        }
+    }
+
+    enum class ComparisonOperator(val symbol: String) {
+        GEQ(">="), LEQ("<="), LT("<"), GT(">")
+    }
+    class ProbabilityThresholdProperty(
+        name: String, val optimType: Goal, val pathFormula: SMDPPathFormula, val threshold: Double, val comparison: ComparisonOperator
+    ) : SMDPProperty(name) {
+        override fun toString(): String {
+            return "$name: P_$optimType($pathFormula) ${comparison.symbol} $threshold"
+        }
+    }
+
+    class ExpectationThresholdProperty(
+        name: String,
+        val optimType: Goal, val rewardExpr: Expr<RatType>,
+        val until: Expr<BoolType>,
+        val accumulateRewardOnExit: Boolean, val accumulateRewardAfterStep: Boolean,
+        val threshold: Double, val comparison: ComparisonOperator
+    ) : SMDPProperty(name) {
+        override fun toString(): String {
+            val acc = arrayListOf<String>()
+            if(accumulateRewardOnExit) acc.add("exit")
+            if(accumulateRewardAfterStep) acc.add("step")
+            val U =
+                if (until == BoolExprs.True()) ""
+                else " U $until"
+            return "$name: E_$optimType($rewardExpr$U) ${comparison.symbol} $threshold $acc"
+        }
+    }
+}
+
+data class ThetaRewardBound(
+    val rewardExpr: Expr<RatType>,
+    val accumulateRewardOnExit: Boolean,
+    val accumulateRewardAfterStep: Boolean,
+    val lowerBound: Expr<RatType>?,
+    val lowerExclusive: Boolean,
+    val upperBound: Expr<RatType>?,
+    val upperExclusive: Boolean
+)
+
+sealed class SMDPPathFormula() {
+    enum class Quantifier() {
+        EXISTS, FORALL
+    }
+
+    class Until(val left: SMDPPathFormula, val right: SMDPPathFormula, val rewardBounds: Collection<ThetaRewardBound>): SMDPPathFormula() {
+        override fun toString(): String {
+            return "($left) U ($right)"
+        }
+    }
+
+    class WeakUntil(val left: SMDPPathFormula, val right: SMDPPathFormula, val rewardBounds: Collection<ThetaRewardBound>): SMDPPathFormula() {
+        override fun toString(): String {
+            return "($left) W ($right)"
+        }
+    }
+
+    class Release(val left: SMDPPathFormula, val right: SMDPPathFormula, val rewardBounds: Collection<ThetaRewardBound>): SMDPPathFormula() {
+        override fun toString(): String {
+            return "($left) R ($right)"
+        }
+    }
+
+    class Globally(val inner: SMDPPathFormula, val rewardBounds: Collection<ThetaRewardBound>): SMDPPathFormula() {
+        override fun toString(): String {
+            return if(rewardBounds.isEmpty()) "G($inner)" else "G^[$rewardBounds]($inner)"
+        }
+    }
+
+    class Eventually(val inner: SMDPPathFormula, val rewardBounds: Collection<ThetaRewardBound>): SMDPPathFormula() {
+        override fun toString(): String {
+            return if(rewardBounds.isEmpty()) "F($inner)" else "F^[$rewardBounds]($inner)"
+        }
+    }
+
+    class StateFormula(val expr: Expr<BoolType>): SMDPPathFormula() {
+        override fun toString(): String {
+            return "$expr"
+        }
+    }
+}

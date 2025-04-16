@@ -49,28 +49,8 @@ class DirectChecker<S: State, A: StmtAction>(
         measureExplorationTime: Boolean = false
     ): Double {
 
-        val game = DirectCheckerMDP()
-
-        val rewardFunction =
-            if(checkReward) object : GameRewardFunction<DirectCheckerNode<S, A>, FiniteDistribution<DirectCheckerNode<S, A>>> {
-                override fun getStateReward(n: DirectCheckerNode<S, A>): Double {
-                    return 0.0
-                }
-
-                override fun getEdgeReward(
-                    source: DirectCheckerNode<S, A>,
-                    action: FiniteDistribution<DirectCheckerNode<S, A>>,
-                    target: DirectCheckerNode<S, A>
-                ): Double {
-                    val onExit = if(accumulateRewardOnExit) source.rewardOnExit else 0.0
-                    val afterStep = if(accumulateRewardAfterStep) target.rewardOnExit else 0.0
-                    return onExit + afterStep
-                }
-
-            }
-            else TargetRewardFunction<DirectCheckerNode<S, A>, FiniteDistribution<DirectCheckerNode<S, A>>> {
-                it.isTargetNode
-            }
+        val game = getMDP()
+        val rewardFunction = getRewardFun()
 
         val timer = Stopwatch.createStarted()
         if(measureExplorationTime) {
@@ -82,17 +62,7 @@ class DirectChecker<S: State, A: StmtAction>(
             timer.start()
         }
 
-        val initializer =
-            if(checkReward) {
-                ExplicitInitializer(
-                    mapOf(), mapOf(), 0.0, Double.POSITIVE_INFINITY, 1e-7, mapOf()
-                )
-            }
-            else if(useQualitativePreprocessing)
-                MDPAlmostSureTargetInitializer(game, goal, DirectCheckerNode<S, A>::isTargetNode)
-            else TargetSetLowerInitializer {
-                it.isTargetNode
-            }
+        val initializer = getInitializer(game, goal)
 
         if(initializer.isKnown(game.initNode)) {
             timer.stop()
@@ -115,10 +85,51 @@ class DirectChecker<S: State, A: StmtAction>(
         return values[game.initNode]!!
     }
 
+    fun checkWithDebugInfo(
+        goal: Goal,
+        measureExplorationTime: Boolean = false
+    ) {
+
+    }
+
     companion object {
         private var nextId = 0
     }
-    
+
+    fun getMDP() = this.DirectCheckerMDP()
+    fun getRewardFun() =
+        if(checkReward) object : GameRewardFunction<DirectCheckerNode<S, A>, FiniteDistribution<DirectCheckerNode<S, A>>> {
+        override fun getStateReward(n: DirectCheckerNode<S, A>): Double {
+            return 0.0
+        }
+
+        override fun getEdgeReward(
+            source: DirectCheckerNode<S, A>,
+            action: FiniteDistribution<DirectCheckerNode<S, A>>,
+            target: DirectCheckerNode<S, A>
+        ): Double {
+            val onExit = if(accumulateRewardOnExit) source.rewardOnExit else 0.0
+            val afterStep = if(accumulateRewardAfterStep) target.rewardOnExit else 0.0
+            return onExit + afterStep
+        }
+
+    }
+    else TargetRewardFunction {
+        it.isTargetNode
+    }
+    fun getInitializer(game: DirectCheckerMDP, goal: Goal) =
+        if(checkReward) {
+            ExplicitInitializer(
+                mapOf(), mapOf(), 0.0, Double.POSITIVE_INFINITY, 1e-7, mapOf()
+            )
+        }
+        else if(useQualitativePreprocessing)
+            MDPAlmostSureTargetInitializer(game, goal, DirectCheckerNode<S, A>::isTargetNode)
+        else TargetSetLowerInitializer {
+            it.isTargetNode
+        }
+
+
     inner class DirectCheckerMDP : StochasticGame<DirectCheckerMDP.NodeClass, FiniteDistribution<DirectCheckerNode<S, A>>> {
         val initNode = NodeClass(initState)
         init {

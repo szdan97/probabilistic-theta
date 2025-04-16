@@ -4,6 +4,7 @@ import hu.bme.mit.theta.analysis.expl.ExplInitFunc
 import hu.bme.mit.theta.analysis.expl.ExplPrec
 import hu.bme.mit.theta.analysis.expl.ExplState
 import hu.bme.mit.theta.analysis.expl.ExplStmtTransFunc
+import hu.bme.mit.theta.analysis.expr.ExprState
 import hu.bme.mit.theta.analysis.pred.PredAbstractors
 import hu.bme.mit.theta.analysis.pred.PredInitFunc
 import hu.bme.mit.theta.analysis.pred.PredPrec
@@ -41,7 +42,7 @@ class SMDPLazyChecker(
     val useSeq: Boolean = false,
     val useGameRefinement: Boolean = false,
     val useQualitativePreprocessing: Boolean = false,
-    val mergeSameSCNodes: Boolean = true
+    val mergeSameSCNodes: Boolean = false
 ) {
 
     enum class BRTDPStrategy {
@@ -55,11 +56,58 @@ class SMDPLazyChecker(
         BRTDP, VI, BVI
     }
 
+    fun <T: ExprState> getSuccessorSelection() = when (brtdpStrategy) {
+        BRTDPStrategy.RANDOM -> SMDPLazyCheckerGame<T>::randomSelection
+        BRTDPStrategy.WEIGHTED_RANDOM -> SMDPLazyCheckerGame<T>::weightedRandomSelection
+        BRTDPStrategy.ROUND_ROBIN -> roundRobinSelection { this.chooseNextRR().second }
+        BRTDPStrategy.DIFF_BASED -> SMDPLazyCheckerGame<T>::diffBasedSelection
+    }
+
     fun checkExpl(
         smdp: SMDP,
         smdpReachabilityTask: SMDPReachabilityTask
     ): Double {
 
+        val checker = getInnerCheckerExpl(smdp, smdpReachabilityTask)
+        val successorSelection = getSuccessorSelection<ExplState>()
+
+        val varOrder = smdp.getAllVars()
+        val extract = { s: SMDPState<ExplState> ->
+            varOrder.map { v ->
+                s.domainState.`val`.eval(v).orElse(null)
+            }
+        }
+
+        val subResult = when (algorithm) {
+            BRTDP -> checker.brtdp(successorSelection, threshold)
+            VI -> checker.fullyExpanded(false, threshold, extract)
+            BVI -> checker.fullyExpanded(true, threshold, extract)
+        }
+
+        return if (smdpReachabilityTask.negateResult) 1.0 - subResult else subResult
+    }
+
+    fun checkPred(
+        smdp: SMDP,
+        smdpReachabilityTask: SMDPReachabilityTask
+    ): Double {
+
+        val checker = getInnerCheckerPred(smdp, smdpReachabilityTask)
+        val successorSelection = getSuccessorSelection<PredState>()
+
+        val subResult = when (algorithm) {
+            BRTDP -> checker.brtdp(successorSelection, threshold)
+            VI -> checker.fullyExpanded(false, threshold)
+            BVI -> checker.fullyExpanded(true, threshold)
+        }
+
+        return if (smdpReachabilityTask.negateResult) 1.0 - subResult else subResult
+    }
+
+    fun getInnerCheckerExpl(
+        smdp: SMDP,
+        smdpReachabilityTask: SMDPReachabilityTask
+    ): ProbLazyChecker<SMDPState<ExplState>, SMDPState<ExplState>, SMDPCommandAction> {
         fun targetCommands(locs: List<SMDP.Location>) = listOf(
             ProbabilisticCommand(
                 smdpReachabilityTask.targetExpr, FiniteDistribution.dirac(
@@ -94,7 +142,7 @@ class SMDPLazyChecker(
 
         val explDomain = SMDPExplDomain(domainTransFunc, fullPrec, itpSolver)
 
-        val checker = ProbLazyChecker(
+        return ProbLazyChecker(
             ::commandsWithPrecondition, { targetCommands(it.locs) },
             fullInit.first(), topInit.first(),
             explDomain,
@@ -109,33 +157,12 @@ class SMDPLazyChecker(
             useQualitativePreprocessing = useQualitativePreprocessing,
             mergeSameSCNodes = mergeSameSCNodes
         )
-        val successorSelection = when (brtdpStrategy) {
-            BRTDPStrategy.RANDOM -> SMDPLazyCheckerGame<ExplState>::randomSelection
-            BRTDPStrategy.WEIGHTED_RANDOM -> SMDPLazyCheckerGame<ExplState>::weightedRandomSelection
-            BRTDPStrategy.ROUND_ROBIN -> roundRobinSelection { this.chooseNextRR().second }
-            BRTDPStrategy.DIFF_BASED -> SMDPLazyCheckerGame<ExplState>::diffBasedSelection
-        }
-
-        val varOrder = smdp.getAllVars()
-        val extract = { s: SMDPState<ExplState> ->
-            varOrder.map { v ->
-                s.domainState.`val`.eval(v).orElse(null)
-            }
-        }
-
-        val subResult = when (algorithm) {
-            BRTDP -> checker.brtdp(successorSelection, threshold)
-            VI -> checker.fullyExpanded(false, threshold, extract)
-            BVI -> checker.fullyExpanded(true, threshold, extract)
-        }
-
-        return if (smdpReachabilityTask.negateResult) 1.0 - subResult else subResult
     }
 
-    fun checkPred(
+    fun getInnerCheckerPred(
         smdp: SMDP,
         smdpReachabilityTask: SMDPReachabilityTask
-    ): Double {
+    ): ProbLazyChecker<SMDPState<ExplState>, SMDPState<PredState>, SMDPCommandAction> {
 
         fun targetCommands(locs: List<SMDP.Location>) = listOf(
             ProbabilisticCommand(
@@ -177,7 +204,7 @@ class SMDPLazyChecker(
             }
 
         val predDomain = SMDPPredDomain(domainTransFunc, fullPrec, smtSolver, itpSolver, ucSolver, false)
-        val checker = ProbLazyChecker(
+        return ProbLazyChecker(
             ::commandsWithPrecondition, { targetCommands(it.locs) },
             fullInit.first(), topInit.first(),
             predDomain,
@@ -192,22 +219,6 @@ class SMDPLazyChecker(
             useQualitativePreprocessing = useQualitativePreprocessing,
             mergeSameSCNodes = mergeSameSCNodes
         )
-
-        val successorSelection = when (brtdpStrategy) {
-            BRTDPStrategy.RANDOM -> SMDPLazyCheckerGame<PredState>::randomSelection
-            BRTDPStrategy.WEIGHTED_RANDOM -> SMDPLazyCheckerGame<PredState>::weightedRandomSelection
-            BRTDPStrategy.ROUND_ROBIN -> roundRobinSelection { this.chooseNextRR().second }
-            BRTDPStrategy.DIFF_BASED -> SMDPLazyCheckerGame<PredState>::diffBasedSelection
-        }
-
-
-        val subResult = when (algorithm) {
-            BRTDP -> checker.brtdp(successorSelection, threshold)
-            VI -> checker.fullyExpanded(false, threshold)
-            BVI -> checker.fullyExpanded(true, threshold)
-        }
-
-        return if (smdpReachabilityTask.negateResult) 1.0 - subResult else subResult
     }
 
 }

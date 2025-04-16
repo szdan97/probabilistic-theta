@@ -7,8 +7,7 @@ import hu.bme.mit.theta.common.logging.ConsoleLogger
 import hu.bme.mit.theta.common.logging.Logger
 import hu.bme.mit.theta.core.model.ImmutableValuation
 import hu.bme.mit.theta.core.type.Expr
-import hu.bme.mit.theta.core.type.booltype.BoolExprs.Not
-import hu.bme.mit.theta.core.type.booltype.BoolExprs.True
+import hu.bme.mit.theta.core.type.booltype.BoolExprs.*
 import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.core.type.booltype.SmartBoolExprs
 import hu.bme.mit.theta.core.utils.ExprUtils
@@ -26,14 +25,14 @@ import kotlin.math.min
 
 class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     // Model properties
-    private val getStdCommands: (SC) -> Collection<ProbabilisticCommand<A>>,
-    private val getErrorCommands: (SC) -> Collection<ProbabilisticCommand<A>>,
-    private val initState: SC,
-    private val topInit: SA,
+    val getStdCommands: (SC) -> Collection<ProbabilisticCommand<A>>,
+    val getErrorCommands: (SC) -> Collection<ProbabilisticCommand<A>>,
+    val initState: SC,
+    val topInit: SA,
 
-    private val domain: LazyDomain<SC, SA, A>,
+    val domain: LazyDomain<SC, SA, A>,
 
-    private val goal: Goal,
+    val goal: Goal,
 
     // Checker Configuration
 
@@ -53,7 +52,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     private val useSeq: Boolean = false,
     private val useGameRefinement: Boolean = false,
     private val useQualitativePreprocessing: Boolean = false,
-    private val mergeSameSCNodes: Boolean = true,
+    private val mergeSameSCNodes: Boolean = false,
     private val refinementStrategy: EdgeRefinementStrategy = EdgeRefinementStrategy.ALL_EDGES,
 ) {
     /**
@@ -78,6 +77,11 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     init {
         if (!(useMayStandard || useMustStandard)) throw RuntimeException("No approximation type (must/may/both) specified for standard commands!")
         if (!(useMayTarget || useMustTarget)) throw RuntimeException("No approximation type (must/may/both) specified for target commands!")
+        if (goal == Goal.MIN && !useMayStandard)
+            // the simulation theorem only holds for non-absorbing MDPs, and adding theoretical self-loops is non-trivial for this case
+            // a possible solution would be to do the same as in the lower approx of the game-based version:
+            // a node should be considered a target if it is absorbing, but there are non-absorbing s \in L_a(n)
+            TODO("MIN with lower-cover is unsound for now")
     }
 
     val waitlist = ArrayDeque<Node>()
@@ -183,11 +187,19 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             onUncover?.invoke(this)
         }
 
-        fun strengthenWithSeq(toblock: Expr<BoolType>) {
+        fun strengthenWithSeq(toblock: Expr<BoolType>, forEdge: Edge? = null) {
             var currNode = this
             val nodes = arrayListOf(currNode)
             val guards = arrayListOf<Expr<BoolType>>()
             val actions = arrayListOf<A>()
+
+            if(forEdge != null) {
+                guards.add(0, forEdge.guard)
+                actions.add(0, forEdge.getActionFor(currNode))
+                currNode = forEdge.source
+                require(!nodes.contains(currNode))
+                nodes.add(0, currNode)
+            }
 
             // TODO: better handling of the init node
             while (currNode.backEdges.isNotEmpty() && currNode.id != 0) {
@@ -227,10 +239,16 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             }
 
             for ((node, inEdges) in secondaryParentStrengthenings) {
-                for (inEdge in inEdges) {
-                    val action = inEdge.getActionFor(node)
-                    val preImage = domain.preImage(node.sa, action)
-                    inEdge.source.strengthenWithSeq(Not(preImage))
+                // TODO: check if taking only 1 edge really makes sense
+                //  the idea is that the recursive call will account for all the other parents
+                for (inEdge in inEdges.take(1)) {
+//                    val action = inEdge.getActionFor(node)
+//                    val preImage = ExprUtils.simplify(domain.preImage(node.sa, action), ImmutableValuation.empty())
+//                    val toBlock = SmartBoolExprs.And(inEdge.guard, Not(preImage))
+//                    if(preImage != True())
+//                        inEdge.source.strengthenWithSeq(toBlock)
+
+                    node.strengthenWithSeq(Not(node.sa.toExpr()), inEdge)
                 }
             }
         }
@@ -260,13 +278,17 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                 val parent = backEdge.source
                 val action = backEdge.getActionFor(this)
                 // TODO: what if preImage is equivalent to True?
-                val preImage = domain.preImage(this.sa, action)
+                val preImage = ExprUtils.simplify(domain.preImage(this.sa, action), ImmutableValuation.empty())
+                val toBlock = SmartBoolExprs.And(backEdge.guard, Not(preImage))
+
+                if (preImage == True()) continue
+
                 if (useSeq) {
-                    parent.strengthenWithSeq(Not(preImage))
+                    parent.strengthenWithSeq(toBlock)
                 } else {
                     val constrainedToPreImage = domain.block(
                         parent.sa,
-                        Not(preImage),
+                        toBlock,
                         parent.sc
                     )
                     parent.changeAbstractLabel(constrainedToPreImage)
@@ -1118,12 +1140,24 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             if (useGameRefinement) computeErrorProbWithRefinement(
                 initNode, reachedSet, scToNode, useBVI, threshold, threshold
             )
-            else computeErrorProb(initNode, nodes, useBVI, threshold)
+            else computeErrorProb(initNode, nodes, useBVI, threshold).first
         timer.stop()
         val probTime = timer.elapsed(TimeUnit.MILLISECONDS)
         println("Probability computation time (ms): $probTime")
         println("Total time (ms): ${explorationTime + probTime}")
         return errorProb
+    }
+
+    fun fullyExpandedWithDebugInfo(
+        useBVI: Boolean = false,
+        threshold: Double,
+        extractKeys: (SA) -> List<*> = { _ -> listOf(null) },
+    ): Pair<Double, Pair<PARG, Map<Node, Double>>> {
+        val (reachedSet, scToNode, initNode) = explore(extractKeys, 0, Stopwatch.createStarted(), mergeSameSCNodes)
+        val nodes = reachedSet.getAll()
+
+        return if (useGameRefinement) TODO()
+        else computeErrorProb(initNode, nodes, useBVI, threshold)
     }
 
     private inner class ExplorationResult(
@@ -1282,12 +1316,14 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     private fun close(node: Node, reachedSet: TrieReachedSet<Node, *>, scToNode: Map<SC, List<Node>>) {
         require(!node.isCovered)
         scToNode[node.sc]?.find { it != node && !it.isCovered }?.let {
+        //scToNode[node.sc]?.find { it != node && it.isExpanded() }?.let {
             node.coverWith(it)
             node.strengthenForCovering()
             return
         }
         for (otherNode in reachedSet.get(node)) {
             if (otherNode != node && !otherNode.isCovered && domain.checkContainment(node.sc, otherNode.sa)) {
+            //if (otherNode != node && otherNode.isExpanded() && domain.checkContainment(node.sc, otherNode.sa)) {
                 node.coverWith(otherNode)
                 node.strengthenForCovering()
                 break
@@ -1331,7 +1367,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         reachedSet: Collection<Node>,
         useBVI: Boolean,
         threshold: Double
-    ): Double {
+    ): Pair<Double, Pair<PARG, Map<Node, Double>>> {
 
         val parg = PARG(initNode, reachedSet)
         val rewardFunction = TargetRewardFunction<Node, PARGAction> { it.isErrorNode && !it.isCovered }
@@ -1354,7 +1390,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             val probTime = timer.elapsed(TimeUnit.MILLISECONDS)
             println("Precomputation sufficient, result: ${initializer.initialLowerBound(parg.initialNode)}")
             println("Probability computation time (ms): $probTime")
-            return initializer.initialLowerBound(parg.initialNode)
+            return initializer.initialLowerBound(parg.initialNode) to (parg to parg.getAllNodes().associateWith { initializer.initialLowerBound(it) })
         }
 
         val values = quantSolver.solve(analysisTask, initializer)
@@ -1362,7 +1398,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         val probTime = timer.elapsed(TimeUnit.MILLISECONDS)
         println("Probability computation time (ms): $probTime")
 
-        return values[initNode]!!
+        return (values[initNode]!! to (parg to values))
     }
 
     inner class TrappedPARG(

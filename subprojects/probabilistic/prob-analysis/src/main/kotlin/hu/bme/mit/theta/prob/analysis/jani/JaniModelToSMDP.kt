@@ -38,56 +38,6 @@ import hu.bme.mit.theta.prob.analysis.jani.model.BoolType as JaniBoolType
 import hu.bme.mit.theta.prob.analysis.jani.model.IntType as JaniIntType
 import hu.bme.mit.theta.prob.analysis.jani.model.RealType as JaniRealType
 
-sealed class SMDPProperty(
-    val name: String
-) {
-    class ProbabilityProperty(name: String, val optimType: Goal, val pathFormula: SMDPPathFormula) : SMDPProperty(name)
-    class ExpectationProperty(
-        name: String, val optimType: Goal, val rewardExpr: Expr<RatType>, val until: Expr<BoolType>,
-        val accumulateRewardOnExit: Boolean, val accumulateRewardAfterStep: Boolean
-    ) : SMDPProperty(name)
-    // TODO: accumulation?
-    class SteadyStateProperty(name: String, val optimType: Goal, val rewardExpr: Expr<RatType>) : SMDPProperty(name)
-    class PathQuantifierProperty(name: String, val type: SMDPPathFormula.Quantifier, val pathFormula: SMDPPathFormula) : SMDPProperty(name)
-
-    enum class ComparisonOperator {
-        GEQ, LEQ, LT, GT
-    }
-    class ProbabilityThresholdProperty(
-        name: String, val optimType: Goal, val pathFormula: SMDPPathFormula, val threshold: Double, val comparison: ComparisonOperator
-    ) : SMDPProperty(name)
-    class ExpectationThresholdProperty(
-        name: String,
-        val optimType: Goal, val rewardExpr: Expr<RatType>,
-        val until: Expr<BoolType>,
-        val accumulateRewardOnExit: Boolean, val accumulateRewardAfterStep: Boolean,
-        val threshold: Double, val comparison: ComparisonOperator
-    ) : SMDPProperty(name)
-}
-
-data class ThetaRewardBound(
-    val rewardExpr: Expr<RatType>,
-    val accumulateRewardOnExit: Boolean,
-    val accumulateRewardAfterStep: Boolean,
-    val lowerBound: Expr<RatType>?,
-    val lowerExclusive: Boolean,
-    val upperBound: Expr<RatType>?,
-    val upperExclusive: Boolean
-)
-
-sealed class SMDPPathFormula() {
-    enum class Quantifier() {
-        EXISTS, FORALL
-    }
-
-    class Until(val left: SMDPPathFormula, val right: SMDPPathFormula, val rewardBounds: Collection<ThetaRewardBound>): SMDPPathFormula()
-    class WeakUntil(val left: SMDPPathFormula, val right: SMDPPathFormula, val rewardBounds: Collection<ThetaRewardBound>): SMDPPathFormula()
-    class Release(val left: SMDPPathFormula, val right: SMDPPathFormula, val rewardBounds: Collection<ThetaRewardBound>): SMDPPathFormula()
-    class Globally(val inner: SMDPPathFormula, val rewardBounds: Collection<ThetaRewardBound>): SMDPPathFormula()
-    class Eventually(val inner: SMDPPathFormula, val rewardBounds: Collection<ThetaRewardBound>): SMDPPathFormula()
-    class StateFormula(val expr: Expr<BoolType>): SMDPPathFormula()
-}
-
 fun Model.toSMDP(modelParameterStrings: Map<String, String>): SMDP {
     require(this.type == ModelType.MDP || this.type == ModelType.DTMC) {
         "Only DTMC and MDP models are supported yet. "
@@ -431,6 +381,7 @@ fun Automaton.toSMDPAutomaton(
     }
 
     return SMDP.Automaton(
+        this.name,
         locationMap.values,
         initLocs,
         actionMap.values,

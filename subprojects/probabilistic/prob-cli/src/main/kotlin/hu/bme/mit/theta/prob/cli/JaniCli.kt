@@ -15,6 +15,7 @@ import hu.bme.mit.theta.analysis.expl.ItpRefToExplPrec
 import hu.bme.mit.theta.analysis.expr.ExprState
 import hu.bme.mit.theta.analysis.expr.refinement.*
 import hu.bme.mit.theta.analysis.pred.*
+import hu.bme.mit.theta.common.visualization.writer.GraphvizWriter
 import hu.bme.mit.theta.core.model.ImmutableValuation
 import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.booltype.BoolExprs
@@ -91,6 +92,9 @@ class JaniCLI : CliktCommand() {
     val model: String by option("-m", "--model", "-i", "--input",
         help = "Path to the input JANI file."
     ).required()
+    val visualize by option("--visualize", "-viz").flag()
+    val analyze by option("--analyze").flag("--dontanalyze", default = true)
+    val visoutput by option("--visoutput", "-vout")
     val parameters by option( "-p", "--parameters",
         help = "Specifies model parameters - constants which do not have values defined in the model."
     )
@@ -122,11 +126,19 @@ class JaniCLI : CliktCommand() {
     val sequenceInterpolation by option("--seq",
         help = "Use sequence interpolation for refinement in lazy abstraction."
     ).flag("--noseq", default = true)
+    val merge by option("--merge").flag("--nomerge", default = false)
     val eliminateSpurious by option("--elim",
         help = "Use interpolation to eliminate (almost-)spurious pivot nodes during game refinement." +
                 "Only used for best transformer abstraction for now."
     ).flag("--no-elim", default = false)
+    val resultOnly by option("--resultonly", "-res").flag("--allinfo", default = false)
 
+    val debug by option("--debug").flag(default = false)
+
+    fun log(message: String, isResult: Boolean = false) {
+        if(isResult || !resultOnly)
+            println(message)
+    }
 
     override fun run() {
 
@@ -146,6 +158,17 @@ class JaniCLI : CliktCommand() {
         val itpSolver = Z3SolverFactory.getInstance().createItpSolver()
         val ucSolver = Z3SolverFactory.getInstance().createUCSolver()
 
+        if(visualize) {
+            val g = model.visualize()
+            if(visoutput?.isEmpty() ?: true) {
+                val dot = GraphvizWriter.getInstance().writeString(g)
+                println(dot)
+            } else {
+                GraphvizWriter.getInstance().writeFile(g, visoutput)
+            }
+        }
+        if(!analyze) return
+
         for (prop in model.properties) {
             if(this.property != null && this.property != prop.name)
                 continue
@@ -156,7 +179,7 @@ class JaniCLI : CliktCommand() {
                     } catch (e: UnsupportedOperationException) {
                         if (this.property != null)
                             throw RuntimeException("Error: property ${prop.name} unsupported")
-                        println("Error: property ${prop.name} unsupported, moving on")
+                        log("Error: property ${prop.name} unsupported, moving on")
                         continue
                     }
                 val smdp = modifiedSMDP ?: model
@@ -171,7 +194,7 @@ class JaniCLI : CliktCommand() {
                     AbstractionMethod.MENU -> menu(solver, itpSolver, ucSolver, task, smdp)
                     AbstractionMethod.BT -> bestTransformer(solver, itpSolver, ucSolver, task, smdp)
                 }
-                println("result: ${prop.name}: $result")
+                log("result: ${prop.name}: $result", true)
             } else if(prop is SMDPProperty.ExpectationProperty && domain == NONE) {
                 val task = extractSMDPExpectedRewardTask(prop)
                 val directChecker = SMDPDirectChecker(solver, verbose, preproc)
@@ -189,17 +212,17 @@ class JaniCLI : CliktCommand() {
                         threshold
                     ) { iteration, reachedSet, linit, uinit ->
                         if (verbose) {
-                            if(iteration % 1000 == 0) println("Iteration $iteration: [$linit, $uinit], ${reachedSet.size} nodes")
+                            if(iteration % 1000 == 0) log("Iteration $iteration: [$linit, $uinit], ${reachedSet.size} nodes")
                         }
                     }
                 }
                 val result = directChecker.check(model, task, quantSolver)
 
-                println("${prop.name}: $result")
+                log("${prop.name}: $result")
             } else {
                 if(this.property != null)
                     throw RuntimeException("Error: Non-probability property ${prop.name} unsupported")
-                println("Non-probability property found")
+                log("Non-probability property found")
             }
         }
     }
@@ -452,7 +475,8 @@ class JaniCLI : CliktCommand() {
             threshold,
             sequenceInterpolation,
             this.abstraction == AbstractionMethod.MENU_LAZY,
-            preproc
+            preproc,
+            merge
         )
 
         if (model.getAllVars().size < 30) {
@@ -475,10 +499,11 @@ class JaniCLI : CliktCommand() {
                 threshold
             ) { iteration, reachedSet, linit, uinit ->
                 if (verbose) {
-                    if(iteration % 1000 == 0) println("Iteration $iteration: [$linit, $uinit], ${reachedSet.size} nodes")
+                    if(iteration % 1000 == 0) log("Iteration $iteration: [$linit, $uinit], ${reachedSet.size} nodes")
                 }
             }
         }
+
         val result = when (domain) {
             PRED -> lazyChecker.checkPred(model, task)
             EXPL -> lazyChecker.checkExpl(model, task)

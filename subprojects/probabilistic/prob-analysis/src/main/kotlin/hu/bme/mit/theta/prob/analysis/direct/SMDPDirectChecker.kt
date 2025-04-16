@@ -25,13 +25,31 @@ class SMDPDirectChecker(
         smdpExpectedRewardTask: SMDPExpectedRewardTask,
         quantSolver: StochasticGameSolver<SMDPDirectCheckerNode, FiniteDistribution<SMDPDirectCheckerNode>>
     ): Double {
+        val directChecker = getInnerCheckerFor(smdp, smdpExpectedRewardTask, quantSolver)
+        return directChecker.check(smdpExpectedRewardTask.goal)
+    }
+
+    fun check(
+        smdp: SMDP,
+        smdpReachabilityTask: SMDPReachabilityTask,
+        quantSolver: StochasticGameSolver<SMDPDirectCheckerNode, FiniteDistribution<SMDPDirectCheckerNode>>
+    ): Double {
+        val directChecker = getInnerCheckerFor(smdp, smdpReachabilityTask, quantSolver)
+        return directChecker.check(smdpReachabilityTask.goal)
+    }
+
+    fun getInnerCheckerFor(
+        smdp: SMDP,
+        smdpExpectedRewardTask: SMDPExpectedRewardTask,
+        quantSolver: StochasticGameSolver<SMDPDirectCheckerNode, FiniteDistribution<SMDPDirectCheckerNode>>
+    ): DirectChecker<SMDPState<ExplState>, SMDPCommandAction> {
         val initFunc = SmdpInitFunc<ExplState, ExplPrec>(
             ExplInitFunc.create(solver, smdp.getFullInitExpr()),
             smdp
         )
         val fullPrec = ExplPrec.of(smdp.getAllVars())
         val initStates = initFunc.getInitStates(fullPrec)
-        if(initStates.size != 1)
+        if (initStates.size != 1)
             throw RuntimeException("initial state must be deterministic")
 
         val smdpLts = SmdpCommandLts<ExplState>(smdp)
@@ -40,7 +58,7 @@ class SMDPDirectChecker(
 
         val transFunc = SMDPTransFunc(ExplStmtTransFunc.create(solver, 0))
 
-        val directChecker = DirectChecker<SMDPState<ExplState>, SMDPCommandAction>(
+        return DirectChecker<SMDPState<ExplState>, SMDPCommandAction>(
             ::commandsWithPrecondition,
             this::isEnabled,
             null,
@@ -57,16 +75,13 @@ class SMDPDirectChecker(
             useQualitativePreprocessing,
             verboseLogging
         )
-
-        return directChecker.check(smdpExpectedRewardTask.goal)
     }
 
-
-    fun check(
-        smdp: SMDP,
-        smdpReachabilityTask: SMDPReachabilityTask,
-        quantSolver: StochasticGameSolver<SMDPDirectCheckerNode, FiniteDistribution<SMDPDirectCheckerNode>>
-    ): Double {
+    fun getInnerCheckerFor(
+    smdp: SMDP,
+    smdpReachabilityTask: SMDPReachabilityTask,
+    quantSolver: StochasticGameSolver<SMDPDirectCheckerNode, FiniteDistribution<SMDPDirectCheckerNode>>
+    ): DirectChecker<SMDPState<ExplState>, SMDPCommandAction> {
         val initFunc = SmdpInitFunc<ExplState, ExplPrec>(
             ExplInitFunc.create(solver, smdp.getFullInitExpr()),
             smdp
@@ -88,7 +103,7 @@ class SMDPDirectChecker(
 
         val transFunc = SMDPTransFunc(ExplStmtTransFunc.create(solver, 0))
 
-        val directChecker = DirectChecker<SMDPState<ExplState>, SMDPCommandAction>(
+        return DirectChecker<SMDPState<ExplState>, SMDPCommandAction>(
             ::commandsWithPrecondition,
             this::isEnabled,
             { s -> smdpReachabilityTask.targetExpr.eval(s.domainState) == True() },
@@ -102,8 +117,6 @@ class SMDPDirectChecker(
             useQualitativePreprocessing,
             verboseLogging
         )
-
-        return directChecker.check(smdpReachabilityTask.goal)
     }
 
     private fun isEnabled(state: SMDPState<ExplState>, cmd: ProbabilisticCommand<SMDPCommandAction>): Boolean {

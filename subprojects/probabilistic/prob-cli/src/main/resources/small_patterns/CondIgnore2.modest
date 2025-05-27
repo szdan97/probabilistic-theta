@@ -1,0 +1,29 @@
+bool target;
+
+property MaxTarget = Pmax(<> target);
+property MinTarget = Pmin(<> target);
+
+const int AMax = 3;
+const int BMax = 3;
+const int CMax = 3;
+const int DMax = 3;
+
+// Here, the probabilistic choice for one of them can be fully ignored
+// EXPL works, but PRED reduces the state space even more
+// MENU and BT, of course, have full precision with EXPL
+// And (PredPrec target (> A_0 1) (= C_0 0) (> B_0 1)) with PRED
+process ConditionalIgnore2() {
+    int(0..AMax) A;
+    int(0..BMax) B;
+    int(0..CMax) C;
+    {= C = DiscreteUniform(0,2) =};
+    {= A = DiscreteUniform(0,AMax) =};
+    {= B = DiscreteUniform(0,BMax) =};
+    if(C == 0) {
+        {= target = A > 1 =}
+    } else {
+        {= target = B > 1 =}
+    }
+}
+
+ConditionalIgnore2()

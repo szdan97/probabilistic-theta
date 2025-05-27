@@ -1,0 +1,25 @@
+bool target;
+
+property MaxTarget = Pmax(<> target);
+property MinTarget = Pmin(<> target);
+
+const int XMax = 99;
+
+// This is an unintentional con with both PRED and EXPL:
+// even with exactTarget, all nodes are already present in the initial UPPER
+// the upper approx is actually exact, but the lower is 0.0
+// so tightenings are needed, but are wasteful
+process NotGoodForGame() {
+    int(0..XMax) X = 0;
+    bool success = false;
+    do {
+        :: when(X<XMax) palt {
+            :1: {= X++, success=success||Bernoulli(0.5)==1 =}
+            :1: break
+        }
+        :: when(X==XMax) break
+    };
+    {= target = success =}
+}
+
+NotGoodForGame()

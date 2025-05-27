@@ -1,0 +1,26 @@
+bool target;
+
+property MaxTarget = Pmax(<> target);
+property MinTarget = Pmin(<> target);
+
+const int AMax = 3;
+
+// Menu is very good at this, and BT can solve it as well (both of them only with PRED)
+// Unfortunately, MENU_LAZY cannot
+process UpDownLoop3() {
+    int(0..AMax) A;
+    int X = 0;
+    bool success = true;
+    {= A = DiscreteUniform(0,AMax) =};
+    do {
+        :: {= X++ =}
+        :: {= X-- =}
+        :: when(X == A) {= success=false =}; break
+    };
+    alt {
+        :: when(success) {= target = true =}
+        :: when(X == A) {= target = true =}
+    }
+}
+
+UpDownLoop3()

@@ -1,0 +1,33 @@
+bool target;
+
+property MaxTarget = Pmax(<> target);
+property MinTarget = Pmin(<> target);
+
+const int AMax = 3;
+
+// Although I wanted to eliminate the previous problem here by removing the decreasing direction,
+// a similar problem occurs when (A=0, X=2) is reached: it is covered by (A=0, X=1),
+// which should actually be correct, as neither of them can ever reach the exit now,
+// but the strengthening is still infinite. A new A-X!=N is tracked in every step of the infinite loop,
+// with N increasing from 1 to inf. The proper predicate would be A-X<0, but that is never synthesized here
+// But how would a solver know that it should generalize the interpolant in that direction?
+// The local interpolation problem (why doesn't X==A after X++?)
+// only concentrates on a single value (because X-A!=1 was true before X++)
+// and X-A>0 is a smaller set, so the heuristic of "more general is better" is counterproductive here
+// The same happens without ITP, just with a bit different syntax
+process UpDownLoop5() {
+    int(0..AMax) A;
+    int X = 0;
+    bool success = true;
+    {= A = DiscreteUniform(0,AMax) =};
+    do {
+        :: {= X++ =}
+        :: when(X == A) {= success=false =}; break
+    };
+    alt {
+        :: when(success) palt { :2: {= target = true =} :1: {= target=false =} }
+        :: when(X == A) palt { :2: {= target = true =} :1: {= target=false =} }
+    }
+}
+
+UpDownLoop5()

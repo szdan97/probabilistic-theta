@@ -1,0 +1,27 @@
+bool target;
+
+property MaxTarget = Pmax(<> target);
+property MinTarget = Pmin(<> target);
+
+const int AMax = 3;
+const int CounterMax = 1000;
+
+// This works quite well, at least against non-lazy
+// ASG Lazy solves it easily
+// In theory, classic lazy could have the same result, but would take much longer to eliminate the spurious parts
+// Here once A is tracked, the spurious chains are eliminated.
+// Unfortunately, although EXPL works, it cannot abstract
+// ASG-Lazy with PRED gets stuck somewhere
+// Others with PRED are also bad (they start counting)
+process LongSpurious() {
+    int counter = 0;
+    int(0..AMax) A;
+    {= A = DiscreteUniform(0, AMax) =};
+    do {
+        :: when(A == AMax && counter < CounterMax) {= counter++ =}
+        :: when(counter == CounterMax) break
+    };
+    {= target = true =}
+}
+
+LongSpurious()

@@ -1,0 +1,20 @@
+bool target;
+
+property MaxTarget = Pmax(<> target);
+property MinTarget = Pmin(<> target);
+
+const int XMax = 99;
+
+// The aim of this example is to show the advantages of iterative approximation
+// It shows it quite well with EXPL
+// but PRED solves it after a single tightening exactly, and has much fewer nodes
+process GoodForGame() {
+    int(0..XMax) X;
+    {= X = DiscreteUniform(0,XMax) =};
+    alt {
+        :: when(X % 2 == 0) {= target = true =}
+        :: {= target = false =}
+    }
+}
+
+GoodForGame()

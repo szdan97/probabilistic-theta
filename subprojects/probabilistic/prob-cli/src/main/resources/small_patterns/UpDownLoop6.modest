@@ -1,0 +1,26 @@
+bool target;
+
+property MaxTarget = Pmax(<> target);
+property MinTarget = Pmin(<> target);
+
+const int AMax = 3;
+
+// Here the counting must stop once X==A
+// Although this is just a desperate try at making this example work, at least PRED somehow
+// reduces this quite well
+process UpDownLoop6() {
+    int(0..AMax) A;
+    int X = 0;
+    bool success = true;
+    {= A = DiscreteUniform(0,AMax) =};
+    do {
+        :: when(X!=A) {= X++ =}
+        :: when(X == A) {= success=false =}; break
+    };
+    alt {
+        :: when(success) palt { :2: {= target = true =} :1: {= target=false =} }
+        :: when(X == A) palt { :2: {= target = true =} :1: {= target=false =} }
+    }
+}
+
+UpDownLoop6()

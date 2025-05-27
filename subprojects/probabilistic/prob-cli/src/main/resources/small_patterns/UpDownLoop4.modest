@@ -1,0 +1,44 @@
+bool target;
+
+property MaxTarget = Pmax(<> target);
+property MinTarget = Pmin(<> target);
+
+const int AMax = 3;
+
+// For some reason, only MENU gets stuck in a refinement loop for this with 1:1 weights, while BT can solve it
+// MENU can solve it if the when(success) branch is deterministic, even though it is dead
+// MENU can solve it if the when(X==A) has 2:1 weights, if the when(success) has 1:1
+// Conjecture: MENU chooses to refine based on the dead branch if the weights are equal (so neither is preferred because of the value gap)
+// Unfortunately, this does not change if the lines are flipped, so I couldn't force the other choice
+// If the dead branch is trivially dead (when(false)), then MENU can solve it
+// Lazy cannot solve it; most likely because of the need for concrete labels, but not sure yet
+// The abstract label of some node with loc_5 starts to count the difference of A and X from -1 until -inf in a single recursive strengthening step
+// This might make sense as the length of a trace varies based on how far we are from them being equal
+// First thought
+// The main problem is that the algorithm tries to cover sc=(A=3,X=1) with sc=(A=3, X=0),
+// as the potential coverer's sa is only (!target, A!=X)
+// This is of course problematic: if it was able to cover it, we'd never get to X==A
+// -> resolution: the strengthening adds new predicates of the form (not (= (+ A_0 (* -1 X_0)) N))),
+// where N increases. Once it gets to 2, the cover is removed. As the important part is that A-X=2,
+// the node will be completed by covering it with (A=2, X=0), so no problem there
+// The actual problem is with (A=3,X=-1), as it starts counting the predicates in the wrong direction:
+// They will decrease A-X starting from -1, as the back-edge used for the strengthening has X-- as its action
+// Because of this, the strengthening loop never ends, the cover is never removed, although it should not be present
+// If somehow the new predicate was of the form A-X=N instead of A-X!=N, this could be solved
+process UpDownLoop4() {
+    int(0..AMax) A;
+    int X = 0;
+    bool success = true;
+    {= A = DiscreteUniform(0,AMax) =};
+    do {
+        :: {= X++ =}
+        :: {= X-- =}
+        :: when(X == A) {= success=false =}; break
+    };
+    alt {
+        :: when(success) palt { :2: {= target = true =} :1: {= target=false =} }
+        :: when(X == A) palt { :2: {= target = true =} :1: {= target=false =} }
+    }
+}
+
+UpDownLoop4()

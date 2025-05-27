@@ -1,0 +1,36 @@
+bool target;
+
+property MaxTarget = Pmax(<> target);
+property MinTarget = Pmin(<> target);
+
+const int AMax = 3;
+const int CounterMax = 1000;
+
+// This is a harder version (in theory at least) where each spurious looong branch must be separately eliminated
+// Although we cannot test the others yet, BLAST and IMPACT would likely not prune the other branches at first
+// Also, MENU seems to struggle much more with this than the previous one if CounterMax is huuuuge, and does not track B after the first iteration
+// Unfortunately, although EXPL works, it cannot abstract
+// ASG-Lazy with PRED gets stuck somewhere
+// Abstraction could be made even more beneficial if none of the chains are viable,
+// but that might be a bit too far
+// In general, it would be good to note that abstraction with symbolic description does not always reduce
+// the size of the state space, so there is a heuristic trade-off between early and late refinement,
+// and while one is better for some models, the other is better for others
+process LongSpurious2() {
+    int counter = 0;
+    int(0..AMax) A;
+    int(0..AMax) B;
+    {= A = DiscreteUniform(0, AMax) =};
+    alt {
+        :: {= B=0 =}
+        :: {= B=1 =}
+        :: {= B=2 =}
+    };
+    do {
+        :: when(A == B && counter < CounterMax) {= counter++ =}
+        :: when(counter == CounterMax) break
+    };
+    {= target = true =}
+}
+
+LongSpurious2()

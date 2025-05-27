@@ -1,0 +1,32 @@
+bool target;
+
+property MaxTarget = Pmax(<> target);
+property MinTarget = Pmin(<> target);
+
+const int AMax = 3;
+
+// Not really infinite, but arbitrarily long
+// The refinement must be antagonistic to make it happen
+// Strong hack when choosing the refinement:
+// val nodeToRefine = nodesToConsider.sortedBy { if(sg.getAvailableActions(it).toString().contains("isSpurious")) 1 else 0 }.find...
+// This can be defended as there is no probabilistic aspect in this model, so
+// the numerical heuristics do not work
+// and either of the two choices could be the reason for spuriousness
+process PredInfinite() {
+    int counter = 0;
+    bool isSpurious;
+    //{= A = DiscreteUniform(0, AMax) =};
+    {= isSpurious = false =};
+    if(isSpurious) {
+        {= counter = 1 =}; //this is here only to separate the if and when conditions (the translation would optimize otherwise)
+        do {
+            :: when(counter < 2000) {= counter++ =}
+            :: when(counter == 2000) break
+        };
+        {= target = true =}
+    } else {
+        {= target = false =}
+    }
+}
+
+PredInfinite()

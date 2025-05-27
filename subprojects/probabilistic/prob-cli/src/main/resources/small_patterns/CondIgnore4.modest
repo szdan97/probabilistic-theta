@@ -1,0 +1,34 @@
+bool target;
+
+property MaxTarget = Pmax(<> target);
+property MinTarget = Pmin(<> target);
+
+const int AMax = 3;
+const int BMax = 3;
+const int CMax = 3;
+const int DMax = 3;
+
+// Similar to the CondIgnore2, but A and B are properly non-det
+process ConditionalIgnore4() {
+    int(0..AMax) A;
+    int(0..BMax) B;
+    int(0..CMax) C;
+    {= C = DiscreteUniform(0,2) =};
+    alt {
+        :: {= A = 0 =}
+        :: {= A = 1 =}
+        :: {= A = 2 =}
+    };
+    alt {
+        :: {= B = 0 =}
+        :: {= B = 1 =}
+        :: {= B = 2 =}
+    };
+    if(C == 0) {
+        {= target = A > 1 =}
+    } else {
+        {= target = B > 1 =}
+    }
+}
+
+ConditionalIgnore4()

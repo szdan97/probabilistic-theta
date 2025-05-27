@@ -1,0 +1,30 @@
+bool target;
+
+property MaxTarget = Pmax(<> target);
+property MinTarget = Pmin(<> target);
+
+const int AMax = 3;
+
+// This showcases the possibility of making the abstract state space infinite even if the concrete one isn't,
+// At least with EXPL
+// Not as important, but PRED can reduce this
+// In practice: the first iteration of BT is finite, it refines with target+counter, and it becomes infinite
+// MENU happens to be more lucky, as it introduces all three variables after the first iteration, making it finite
+// but this really is pure luck: the current implementation does not prioritize between refinable nodes, just takes the
+// first one in the node list, and refines that one. If we took the last one, it would only refine with counter_0. Moreover,
+// we currently do not use interpolation, but directly refine with every variable found in the guard or the WP,
+// so even with the other refinable node, if we used an interpolating solver, it could have resulted in only tracking counter
+// without A
+// PRED can easily solve this task with every implemented abstraction type
+process ExplInfinite() {
+    int counter = 0;
+    int(0..AMax) A;
+    {= A = DiscreteUniform(0, AMax) =};
+    do {
+        :: when(counter < A) {= counter++ =}
+        :: when(counter == A) break
+    };
+    {= target = counter == 0 =}
+}
+
+ExplInfinite()

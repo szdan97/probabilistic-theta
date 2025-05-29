@@ -5,7 +5,8 @@ property MinTarget = Pmin(<> target);
 
 const int AMax = 3;
 
-// Well, this works. But seems to not make much sense.
+// Well, this works with BT and MENU. But seems to not make much sense.
+// And doesn't work with ASG
 process UpDownLoop2() {
     int(0..AMax) A;
     int X = 0;

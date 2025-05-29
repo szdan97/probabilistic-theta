@@ -1,0 +1,21 @@
+bool target;
+
+property MaxTarget = Pmax(<> target);
+property MinTarget = Pmin(<> target);
+
+const int AMax = 3;
+
+// The aim of this process is to present the disadvantage of need an exact representant in non-game-based,
+// even though the only important action is enabled in all states
+// With only upper-cover, we cannot be sure that it the numerical result is exact,
+// but menu-lazy terminates without tightening
+process NoExactRepresentant() {
+        int(0..AMax) A;
+        {= A = DiscreteUniform(0, AMax) =};
+        alt {
+            :: {= target = true =}
+            :: when(A < 2) {= target = Bernoulli(0.2) == 1 =}
+        }
+}
+
+NoExactRepresentant()

@@ -5,10 +5,11 @@ property MinTarget = Pmin(<> target);
 
 const int AMax = 3;
 
-// Unfortunately, this kind of looping isn't good for PASGs either if MAXing, just like counting loops with exit on threshold
+// Unfortunately, this kind of looping isn't good for PASGs if MAXing, just like counting loops with exit on threshold
 // Maybe again because of the target being reachable, not unreachable
 // The interesting part is that it is fine for MINing, MENU_LAZY reports [0.0, 0.0] without refinement
 // The less fortunate part is that even A is irrelevant in that case
+// For max, MENU and BT solve it easily with PRED, but does not terminate with EXPL
 process UpDownLoop1() {
     int(0..AMax) A;
     int X = 0;

@@ -9,7 +9,7 @@ const int CMax = 3;
 const int DMax = 3;
 
 // Sooo this shouldnt work as well, but somehow, it does, at least with PRED
-// it seems that most of hte reduction for CondIgnore2 comes from merging all A>1 and B>1 together,
+// it seems that most of the reduction for CondIgnore2 comes from merging all A>1 and B>1 together,
 // instead of fully ignoring A or B
 // EXPL is still able to reduce the size from 117 to 35/83: it never cares about A, B and C at the same time
 // Until C is selected, it's value does not matter (although as it has a deterministic init, this does not reduce the size)

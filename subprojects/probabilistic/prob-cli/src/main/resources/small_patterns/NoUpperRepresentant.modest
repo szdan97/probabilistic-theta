@@ -1,0 +1,24 @@
+bool target;
+
+property MaxTarget = Pmax(<> target);
+property MinTarget = Pmin(<> target);
+
+const int AMax = 3;
+
+// The aim of this process is to present the disadvantage of needing a single representant
+// The coin flips have different parameters so that the translation cannot merge them
+// Exact: 7/13 (A needed)
+// Menu lazy: 7/13 (A needed)
+// Menu: 4 state nodes, 4 result nodes (empty prec)
+// BT: 4 A-nodes, 5 C-nodes (empty prec)
+process NoUpperRepresentant() {
+    int(0..AMax) A;
+    {= A = DiscreteUniform(0, AMax) =};
+    alt {
+        :: {= target = true =}
+        :: when(A < 2) {= target = Bernoulli(0.2) == 1 =}
+        :: when(A > 3) {= target = Bernoulli(0.3) == 1 =}
+    }
+}
+
+NoUpperRepresentant()

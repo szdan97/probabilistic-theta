@@ -9,7 +9,7 @@ const int AMax = 3;
 // even though the only important action is enabled in all states
 // With only upper-cover, we cannot be sure that it the numerical result is exact,
 // but menu-lazy terminates without tightening
-process NoExactRepresentant() {
+process NoExactRepresentative() {
         int(0..AMax) A;
         {= A = DiscreteUniform(0, AMax) =};
         alt {
@@ -18,4 +18,4 @@ process NoExactRepresentant() {
         }
 }
 
-NoExactRepresentant()
+NoExactRepresentative()

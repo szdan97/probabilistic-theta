@@ -11,7 +11,7 @@ const int AMax = 3;
 // Menu lazy: 7/13 (A needed)
 // Menu: 4 state nodes, 4 result nodes (empty prec)
 // BT: 4 A-nodes, 5 C-nodes (empty prec)
-process NoUpperRepresentant() {
+process NoUpperRepresentative() {
     int(0..AMax) A;
     {= A = DiscreteUniform(0, AMax) =};
     alt {
@@ -21,4 +21,4 @@ process NoUpperRepresentant() {
     }
 }
 
-NoUpperRepresentant()
+NoUpperRepresentative()

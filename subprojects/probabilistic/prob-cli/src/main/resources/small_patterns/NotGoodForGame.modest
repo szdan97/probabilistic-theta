@@ -9,7 +9,7 @@ const int XMax = 99;
 // even with exactTarget, all nodes are already present in the initial UPPER
 // the upper approx is actually exact, but the lower is 0.0
 // so tightenings are needed, but are wasteful
-process NotGoodForGame() {
+process DiminishingReturns() {
     int(0..XMax) X = 0;
     bool success = false;
     do {
@@ -22,4 +22,4 @@ process NotGoodForGame() {
     {= target = success =}
 }
 
-NotGoodForGame()
+DiminishingReturns()

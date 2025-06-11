@@ -6,14 +6,12 @@ property MinTarget = Pmin(<> target);
 const int AMax = 3;
 const int BMax = 3;
 const int CMax = 3;
-const int DMax = 3;
 
 // Similar to CondIgnore3, but A and B are properly non-det
-process ConditionalIgnore5() {
+process CondIgnoreLateNondet() {
     int(0..AMax) A;
     int(0..BMax) B;
     int(0..CMax) C;
-    {= C = DiscreteUniform(0,2) =};
     alt {
         :: {= A = 0 =}
         :: {= A = 1 =}
@@ -24,6 +22,7 @@ process ConditionalIgnore5() {
         :: {= B = 1 =}
         :: {= B = 2 =}
     };
+    {= C = DiscreteUniform(0,2) =};
     if(C == 0) {
         {= target = A > 1 =}
     } else {
@@ -31,4 +30,4 @@ process ConditionalIgnore5() {
     }
 }
 
-ConditionalIgnore5()
+CondIgnoreLateNondet()

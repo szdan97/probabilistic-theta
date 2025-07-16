@@ -10,7 +10,7 @@ import hu.bme.mit.theta.prob.analysis.P_CONCRETE
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 
 sealed class MenuGameNode<S : State, A : Action>(val player: Int) {
-    data class StateNode<S : State, A : Action>(
+    class StateNode<S : State, A : Action>(
         val s: S,
         val maxReward: Int = 0,
         val minReward: Int = 0,
@@ -31,11 +31,20 @@ sealed class MenuGameNode<S : State, A : Action>(val player: Int) {
                 "If maximal and minimal rewards are not the same, then either a reward split expression or a reward expression is needed"
             }
         }
+
+        override fun toString(): String {
+            return "StateNode(s=$s)"
+        }
+
     }
 
-    data class ResultNode<S : State, A : Action>(
+    class ResultNode<S : State, A : Action>(
         val s: S, val a: ProbabilisticCommand<A>
-    ) : MenuGameNode<S, A>(P_ABSTRACTION)
+    ) : MenuGameNode<S, A>(P_ABSTRACTION) {
+        override fun toString(): String {
+            return "ResultNode(s=$s, a=$a)"
+        }
+    }
 
     class TrapNode<S : State, A : Action> : MenuGameNode<S, A>(P_CONCRETE) {
         override fun toString(): String {

@@ -6,13 +6,10 @@ import hu.bme.mit.theta.analysis.Prec
 import hu.bme.mit.theta.analysis.State
 import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.booltype.BoolType
-import hu.bme.mit.theta.prob.analysis.BacktrackableGame
+import hu.bme.mit.theta.core.type.inttype.IntType
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommandLTS
-import hu.bme.mit.theta.probabilistic.FiniteDistribution
+import hu.bme.mit.theta.probabilistic.*
 import hu.bme.mit.theta.probabilistic.FiniteDistribution.Companion.dirac
-import hu.bme.mit.theta.probabilistic.GameRewardFunction
-import hu.bme.mit.theta.probabilistic.ImplicitStochasticGame
-import hu.bme.mit.theta.probabilistic.StochasticGame
 
 class MenuGameAbstractor<S : State, A : Action, P : Prec>(
     val lts: ProbabilisticCommandLTS<S, A>,
@@ -88,48 +85,66 @@ class MenuGameAbstractor<S : State, A : Action, P : Prec>(
         val trapDecision = MenuGameAction.EnterTrap<S, A>()
         val trapDirac = dirac(trapNode as MenuGameNode<S, A>)
 
-
+        // TODO: is there a better way to do this without data classes (so that BLASTMenuGame can still work)?
+        //      although this still does not enforce full exploration, so it's not a materialization,
+        //      but the game interface was meant to be used in a more mathematical way
+        private val stateToNodeMap = hashMapOf(
+            (_initialNode as MenuGameNode.StateNode).s to _initialNode
+        )
 
         override fun getPlayer(node: MenuGameNode<S, A>): Int = node.player
 
+        private  fun getOrCreateNode(
+            s: S, minReward: Int = 0, maxReward: Int = 0,
+            rewardSplitExpr: Expr<BoolType>? = null,
+            rewardExpr: Expr<IntType>? = null,
+            absorbing: Boolean = false
+        ): MenuGameNode.StateNode<S, A> = stateToNodeMap.getOrPut(s) {
+            MenuGameNode.StateNode(s, minReward, maxReward, rewardSplitExpr, rewardExpr, absorbing)
+        }
+
+        private val resultCache = hashMapOf<Pair<MenuGameNode<S, A>, MenuGameAction<S, A>>, FiniteDistribution<MenuGameNode<S, A>>>()
         override fun getResult(
             node: MenuGameNode<S, A>,
             action: MenuGameAction<S, A>
         ): FiniteDistribution<MenuGameNode<S, A>> {
-            val result: FiniteDistribution<MenuGameNode<S, A>> = when (node) {
-                is MenuGameNode.StateNode -> when (action) {
-                    is MenuGameAction.AbstractionDecision -> throw IllegalArgumentException("Result called for unavailable action $action on node $node")
-                    is MenuGameAction.ChosenCommand -> dirac(
-                        MenuGameNode.ResultNode(node.s, action.command)
-                    )
-
-                    is MenuGameAction.EnterTrap -> throw IllegalArgumentException("Result called for unavailable action $action on node $node")
-                }
-
-                is MenuGameNode.ResultNode -> when (action) {
-                    is MenuGameAction.AbstractionDecision ->
-                        action.result.transform {
-                            val mayBeTarget = maySatisfy(it.second, targetExpr)
-                            val mustBeTarget = mustSatisfy(it.second, targetExpr)
-                            require(mustBeTarget == mayBeTarget) {
-                                "The abstraction must be exact with respect to the target labels/rewards for now"
-                            }
-                            MenuGameNode.StateNode(
-                                it.second,
-                                if (mayBeTarget) 1 else 0,
-                                if (mustBeTarget) 1 else 0,
-                                targetExpr,
-                                null,
-                                mustBeTarget
+            val result: FiniteDistribution<MenuGameNode<S, A>> =
+                resultCache.getOrPut(node to action) {
+                    when (node) {
+                        is MenuGameNode.StateNode -> when (action) {
+                            is MenuGameAction.AbstractionDecision -> throw IllegalArgumentException("Result called for unavailable action $action on node $node")
+                            is MenuGameAction.ChosenCommand -> dirac(
+                                MenuGameNode.ResultNode(node.s, action.command)
                             )
+
+                            is MenuGameAction.EnterTrap -> throw IllegalArgumentException("Result called for unavailable action $action on node $node")
                         }
 
-                    is MenuGameAction.ChosenCommand -> throw IllegalArgumentException("Result called for unavailable action $action on node $node")
-                    is MenuGameAction.EnterTrap -> trapDirac
-                }
+                        is MenuGameNode.ResultNode -> when (action) {
+                            is MenuGameAction.AbstractionDecision ->
+                                action.result.transform {
+                                    val mayBeTarget = maySatisfy(it.second, targetExpr)
+                                    val mustBeTarget = mustSatisfy(it.second, targetExpr)
+                                    require(mustBeTarget == mayBeTarget) {
+                                        "The abstraction must be exact with respect to the target labels/rewards for now"
+                                    }
+                                    getOrCreateNode(
+                                        it.second,
+                                        if (mayBeTarget) 1 else 0,
+                                        if (mustBeTarget) 1 else 0,
+                                        targetExpr,
+                                        null,
+                                        mustBeTarget
+                                    )
+                                }
 
-                is MenuGameNode.TrapNode -> throw IllegalArgumentException("Result called for unavailable action $action on node $node")
-            }
+                            is MenuGameAction.ChosenCommand -> throw IllegalArgumentException("Result called for unavailable action $action on node $node")
+                            is MenuGameAction.EnterTrap -> trapDirac
+                        }
+
+                        is MenuGameNode.TrapNode -> throw IllegalArgumentException("Result called for unavailable action $action on node $node")
+                    }
+                }
             if (trackPredecessors) {
                 for (resultNode in result.support) {
                     predecessors.getOrPut(resultNode) { hashSetOf() }.add(node)

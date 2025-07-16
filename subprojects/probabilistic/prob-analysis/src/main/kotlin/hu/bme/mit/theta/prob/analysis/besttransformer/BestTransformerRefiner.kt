@@ -10,6 +10,7 @@ import hu.bme.mit.theta.analysis.expr.refinement.RefutationToPrec
 import hu.bme.mit.theta.core.stmt.SequenceStmt
 import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.booltype.BoolType
+import hu.bme.mit.theta.core.utils.ExprUtils
 import hu.bme.mit.theta.core.utils.WpState
 import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.BestTransformerGameAction
 import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.BestTransformerGameAction.AbstractionChoice
@@ -112,7 +113,7 @@ class BestTransformerRefiner<S : ExprState, A : StmtAction, P : Prec, R : Refuta
             } else {
                 for ((action, result) in lowerChoice.commandResults[command]!!.support) {
                     val wp = WpState.of(result.toExpr()).wep(SequenceStmt.of(action.stmts)).expr
-                    newPrec = newPrec.extend(wp)
+                    newPrec = newPrec.extend(ExprUtils.simplify(wp))
                 }
             }
         }
@@ -125,8 +126,9 @@ class BestTransformerRefiner<S : ExprState, A : StmtAction, P : Prec, R : Refuta
                 newPrec = newPrec.extend(it.command.guard)
             } else {
                 for ((action, result) in upperChoice.commandResults[command]!!.support) {
-                    val wp = WpState.of(result.toExpr()).wp(SequenceStmt.of(action.stmts)).expr
-                    newPrec = newPrec.extend(wp)
+                    val wp = WpState.of(result.toExpr()).wep(SequenceStmt.of(action.stmts)).expr
+                    val simped = ExprUtils.simplify(wp)
+                    newPrec = newPrec.extend(simped)
                 }
             }
         }

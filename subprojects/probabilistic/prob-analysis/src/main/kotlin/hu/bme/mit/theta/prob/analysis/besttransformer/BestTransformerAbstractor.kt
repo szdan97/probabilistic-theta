@@ -9,12 +9,16 @@ import hu.bme.mit.theta.core.type.booltype.BoolExprs.True
 import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.core.type.booltype.SmartBoolExprs
 import hu.bme.mit.theta.core.type.inttype.IntType
-import hu.bme.mit.theta.prob.analysis.*
+import hu.bme.mit.theta.prob.analysis.P_ABSTRACTION
+import hu.bme.mit.theta.prob.analysis.P_CONCRETE
+import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
+import hu.bme.mit.theta.prob.analysis.ProbabilisticCommandLTS
 import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.BestTransformerGameAction.AbstractionChoice
 import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.BestTransformerGameAction.ConcreteChoice
 import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.BestTransformerGameNode.AbstractionChoiceNode
 import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.BestTransformerGameNode.ConcreteChoiceNode
 import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.LinkedTransFunc
+import hu.bme.mit.theta.probabilistic.BacktrackableGame
 import hu.bme.mit.theta.probabilistic.FiniteDistribution
 import hu.bme.mit.theta.probabilistic.FiniteDistribution.Companion.dirac
 import hu.bme.mit.theta.probabilistic.GameRewardFunction
@@ -123,7 +127,7 @@ class BestTransformerAbstractor<S : State, A : Action, P : Prec>(
         val maySatisfy: (S, Expr<BoolType>) -> Boolean,
         val mustSatisfy: (S, Expr<BoolType>) -> Boolean,
     ) : ImplicitStochasticGame<BestTransformerGameNode<S, A>, BestTransformerGameAction<S, A>>(),
-    BacktrackableGame<BestTransformerGameNode<S, A>> {
+        BacktrackableGame<BestTransformerGameNode<S, A>> {
         private val _initialNode: BestTransformerGameNode<S, A>
         private val predecessors = hashMapOf<BestTransformerGameNode<S, A>, MutableSet<BestTransformerGameNode<S, A>>>()
 

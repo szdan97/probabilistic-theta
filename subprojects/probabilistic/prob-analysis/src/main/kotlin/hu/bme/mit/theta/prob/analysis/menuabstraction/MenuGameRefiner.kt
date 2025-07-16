@@ -23,10 +23,15 @@ import java.util.*
 class MenuGameRefiner<S: ExprState, A: StmtAction, P: Prec, R: Refutation>(
     val solver: Solver,
     val extend: P.(basedOn: Expr<BoolType>) -> P,
+    val pivotSelectionStrategy: PivotSelectionStrategy,
     val eliminateSpurious: Boolean = false,
     val traceChecker: ExprTraceChecker<R>? = null,
     val refToPrec: RefutationToPrec<P, R>? = null,
 ) {
+
+    init {
+        require(!eliminateSpurious || (traceChecker != null && refToPrec != null))
+    }
 
     data class RefinementResult<S: ExprState, A: StmtAction, P: Prec>(
         val newPrec: P,
@@ -85,15 +90,24 @@ class MenuGameRefiner<S: ExprState, A: StmtAction, P: Prec, R: Refutation>(
         fun refinable(node: ResultNode<S, A>): Boolean = minMaxChoiceDifference(node).isNotEmpty()
 
         fun refinable(node: StateNode<S, A>): Boolean =
-            node.minReward != node.maxReward || sg.getAvailableActions(node).any { a->
-                val resNode = sg.getResult(node, a).support.first() as ResultNode // always dirac
-                refinable(resNode)
-            }
+                valueFunctionMax[node]!! - valueFunctionMin[node]!! > tolerance && (
+                        node.minReward != node.maxReward || sg.getAvailableActions(node).any { a ->
+                            val resNode = sg.getResult(node, a).support.first() as ResultNode // always dirac
+                            refinable(resNode)
+                        }
+                )
 
-        val nodeToRefine = nodesToConsider.find {
-            valueFunctionMax[it]!! - valueFunctionMin[it]!! > tolerance
-                    && refinable(it)
-        } ?: throw IllegalArgumentException("Unable to refine menu game, no refinable node found")
+        //val nodeToRefine = nodesToConsider.sortedBy { if(sg.getAvailableActions(it).toString().contains("isSpurious")) 1 else 0 }.find {
+        val refinableNodes = nodesToConsider.filter(::refinable)
+        if(refinableNodes.isEmpty())
+            throw IllegalArgumentException("Unable to refine menu game, no refinable node found")
+        val nodeToRefine = pivotSelectionStrategy.selectPivot(
+            sg,
+            refinableNodes,
+            valueFunctionMax, valueFunctionMin,
+            strategyMax, strategyMin
+        )
+
         val actions = sg.getAvailableActions(nodeToRefine)
         var resnodeToRefine: ResultNode<S, A>? = null
         for (a in actions) {

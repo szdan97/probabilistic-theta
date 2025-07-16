@@ -34,6 +34,9 @@ class MenuGameCegarChecker<S : ExprState, A : StmtAction, P : Prec>(
         while (true) {
             val abstraction = abstractor.computeAbstraction(currPrec)
             val game = abstraction.game
+            println("All nodes: ${game.getAllNodes().size}")
+            println("State nodes: ${game.getAllNodes().filterIsInstance<MenuGameNode.StateNode<*,*>>().size}")
+            println("Result nodes: ${game.getAllNodes().filterIsInstance<MenuGameNode.ResultNode<*,*>>().size}")
             val lowerAnalysisTask = AnalysisTask(game, { if (it == P_CONCRETE) goal else Goal.MIN }, abstraction.rewardMax)
             val upperAnalysisTask = AnalysisTask(game, { if (it == P_CONCRETE) goal else Goal.MAX }, abstraction.rewardMin)
             val upperValues = gameSolver.solveWithStrategy(upperAnalysisTask, lowerInitializer)

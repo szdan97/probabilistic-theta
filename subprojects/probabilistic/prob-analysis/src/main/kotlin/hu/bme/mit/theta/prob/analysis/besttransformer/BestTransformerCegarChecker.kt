@@ -36,6 +36,9 @@ class BestTransformerCegarChecker<S : ExprState, A : StmtAction, P : Prec>(
         while (true) {
             val abstraction = abstractor.computeAbstraction(currPrec)
             val game = abstraction.game
+            println("All nodes: ${game.getAllNodes().size}")
+            println("A-nodes: ${game.getAllNodes().filterIsInstance<BestTransformerGameNode.AbstractionChoiceNode<*,*>>().size}")
+            println("C-nodes: ${game.getAllNodes().filterIsInstance<BestTransformerGameNode.ConcreteChoiceNode<*,*>>().size}")
             val lowerAnalysisTask = AnalysisTask(game, { if (it == P_CONCRETE) goal else Goal.MIN }, abstraction.rewardMin)
             val upperAnalysisTask = AnalysisTask(game, { if (it == P_CONCRETE) goal else Goal.MAX }, abstraction.rewardMax)
             val (lowerValues, lowerStrat) = gameSolver.solveWithStrategy(lowerAnalysisTask, lowerInitializer)

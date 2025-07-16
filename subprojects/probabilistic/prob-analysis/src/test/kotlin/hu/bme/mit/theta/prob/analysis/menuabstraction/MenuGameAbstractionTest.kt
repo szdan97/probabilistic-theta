@@ -253,7 +253,7 @@ class MenuGameAbstractionTest {
 
         val refiner = MenuGameRefiner<ExplState, StmtAction, ExplPrec, ItpRefutation>(solver, {
             this.join(ExplPrec.of(ExprUtils.getVars(it)))
-        })
+        }, firstRefinable)
 
         val (newPrec, pivot) = refiner.refine(
             abstraction.game,
@@ -274,7 +274,7 @@ class MenuGameAbstractionTest {
         simpleSetup()
         val refiner = MenuGameRefiner<ExplState, StmtAction, ExplPrec, ItpRefutation>(solver, {
             this.join(ExplPrec.of(ExprUtils.getVars(it)))
-        })
+        }, firstRefinable)
 
         val threshold = 1e-6
         val res = MenuGameCegarChecker(explAbstractor, refiner, VISolver(threshold/2, false))
@@ -282,6 +282,24 @@ class MenuGameAbstractionTest {
 
         println(res)
         assert(res.finalPrec == ExplPrec.of(listOf(A, B)))
+        assert(res.finalUpperInitValue-res.finalLowerInitValue <= threshold)
+    }
+
+    @Test
+    fun blastTestExpl() {
+        simpleSetup()
+        val refiner = MenuGameRefiner<ExplState, StmtAction, ExplPrec, ItpRefutation>(solver, {
+            this.join(ExplPrec.of(ExprUtils.getVars(it)))
+        }, firstRefinable)
+
+        val threshold = 1e-6
+        val res = MenuGameBLASTChecker(
+            explLts, explInit, explTransFunc, targetExpr, ::explMaySatisfy, ::explMustSatisfy,
+            ExplOrd.getInstance(), refiner, ExplPrec::join, VISolver(threshold/2, false))
+            .check(ExplPrec.of(listOf(A)), Goal.MAX, threshold)
+
+        println(res)
+        //assert(res.finalPrec == ExplPrec.of(listOf(A, B)))
         assert(res.finalUpperInitValue-res.finalLowerInitValue <= threshold)
     }
 
@@ -309,7 +327,7 @@ class MenuGameAbstractionTest {
 
         val refiner = MenuGameRefiner<PredState, StmtAction, PredPrec, ItpRefutation>(solver, {
             this.join(PredPrec.of(ExprUtils.getAtoms(it)))
-        })
+        }, firstRefinable)
 
         val (newPrec, pivot) = refiner.refine(
             abstraction.game,
@@ -328,7 +346,7 @@ class MenuGameAbstractionTest {
         simpleSetup()
         val refiner = MenuGameRefiner<PredState, StmtAction, PredPrec, ItpRefutation>(solver, {
             this.join(PredPrec.of(ExprUtils.getAtoms(it)))
-        })
+        }, firstRefinable)
 
         val threshold = 1e-6
         val res = MenuGameCegarChecker(predAbstractor, refiner, VISolver(threshold/2, false))

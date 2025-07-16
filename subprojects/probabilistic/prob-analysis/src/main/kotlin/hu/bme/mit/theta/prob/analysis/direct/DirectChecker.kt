@@ -124,7 +124,7 @@ class DirectChecker<S: State, A: StmtAction>(
             )
         }
         else if(useQualitativePreprocessing)
-            MDPAlmostSureTargetInitializer(game, goal, DirectCheckerNode<S, A>::isTargetNode)
+            MDPAlmostSureTargetInitializer(game, goal, isTarget = DirectCheckerNode<S, A>::isTargetNode)
         else TargetSetLowerInitializer {
             it.isTargetNode
         }

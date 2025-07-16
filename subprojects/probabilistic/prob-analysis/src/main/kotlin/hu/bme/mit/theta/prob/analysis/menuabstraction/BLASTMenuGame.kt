@@ -5,16 +5,15 @@ import hu.bme.mit.theta.analysis.PartialOrd
 import hu.bme.mit.theta.analysis.Prec
 import hu.bme.mit.theta.analysis.expr.ExprState
 import hu.bme.mit.theta.analysis.expr.StmtAction
-import hu.bme.mit.theta.analysis.waitlist.FifoWaitlist
-import hu.bme.mit.theta.analysis.waitlist.Waitlist
 import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommandLTS
 import hu.bme.mit.theta.probabilistic.FiniteDistribution
 import hu.bme.mit.theta.probabilistic.FiniteDistribution.Companion.dirac
-import hu.bme.mit.theta.probabilistic.ImplicitStochasticGame
+import hu.bme.mit.theta.probabilistic.StochasticGame
 import hu.bme.mit.theta.probabilistic.gamesolvers.ExpandableNode
 import hu.bme.mit.theta.probabilistic.gamesolvers.ExpansionResult
+import java.util.*
 
 class BLASTMenuGame<S : ExprState, A : StmtAction, P : Prec>(
     val lts: ProbabilisticCommandLTS<S, A>,
@@ -26,8 +25,7 @@ class BLASTMenuGame<S : ExprState, A : StmtAction, P : Prec>(
     val initialPrec: P,
     val ord: PartialOrd<S>,
     val extendPrec: P.(P) -> P
-) : ImplicitStochasticGame<MenuGameNode<S, A>, MenuGameAction<S, A>>() {
-
+) : StochasticGame<MenuGameNode<S, A>, MenuGameAction<S, A>> {
 
     inner class BLASTMenuGameNode(
         val wrappedNode: MenuGameNode<S, A>,
@@ -36,13 +34,15 @@ class BLASTMenuGame<S : ExprState, A : StmtAction, P : Prec>(
          */
         var supportPrecision: P
     ) : ExpandableNode<BLASTMenuGameNode> {
-        val outgoingEdges = hashMapOf<MenuGameAction<S, A>, BLASTMenuGameEdge>()
-        val incomingEdges = arrayListOf<BLASTMenuGameEdge>()
+        val outgoingEdges = hashMapOf<MenuGameAction<S, A>, BLASTMenuGameTransitionEdge>()
+        val incomingEdges = arrayListOf<BLASTMenuGameTransitionEdge>()
 
         var coveringNode: BLASTMenuGameNode? = null
         var coveredNodes: MutableList<BLASTMenuGameNode> = arrayListOf()
+        fun isCovered() = coveringNode != null
+        fun isComplete() = isCovered() || isExpanded()
 
-        private var expanded = false
+        private var expanded = wrappedNode is MenuGameNode.TrapNode
 
         fun getLastCoverer(): BLASTMenuGameNode {
             var res = this
@@ -64,11 +64,9 @@ class BLASTMenuGame<S : ExprState, A : StmtAction, P : Prec>(
                 if (action !in outgoingEdges) {
                     val expansionResult = expand(this, action)
                     newlyCreated.addAll(expansionResult.newlyCreated)
-                    revisited.addAll(expansionResult.revisited)
                 }
             }
             expanded = true
-            // TODO: what if some node has been created for one of the actions and has been revisited by another?
             return ExpansionResult(newlyCreated.toList(), revisited.toList())
         }
 
@@ -86,23 +84,25 @@ class BLASTMenuGame<S : ExprState, A : StmtAction, P : Prec>(
         }
 
         fun extendSupportPrecision(newPrec: P) {
-            supportPrecision.extendPrec(newPrec)
+            supportPrecision = supportPrecision.extendPrec(newPrec)
         }
     }
 
+    sealed class BLASTMenuGameAction
+    object CoverAction: BLASTMenuGameAction()
 
-    inner class BLASTMenuGameEdge(
+    inner class BLASTMenuGameTransitionEdge(
         val wrappedAction: MenuGameAction<S, A>,
         val start: BLASTMenuGameNode,
         val end: FiniteDistribution<BLASTMenuGameNode>
-    )
+    ): BLASTMenuGameAction()
 
     private fun createEdge(
         wrappedAction: MenuGameAction<S, A>,
         start: BLASTMenuGameNode,
         end: FiniteDistribution<BLASTMenuGameNode>
-    ): BLASTMenuGameEdge {
-        val newEdge = BLASTMenuGameEdge(wrappedAction, start, end)
+    ): BLASTMenuGameTransitionEdge {
+        val newEdge = BLASTMenuGameTransitionEdge(wrappedAction, start, end)
         start.outgoingEdges[wrappedAction] = newEdge
         end.support.forEach { it.incomingEdges.add(newEdge) }
         return newEdge
@@ -131,26 +131,34 @@ class BLASTMenuGame<S : ExprState, A : StmtAction, P : Prec>(
         )
     }
 
-    val nodes = hashMapOf(_initialNode.wrappedNode to _initialNode)
-    val waitlist: Waitlist<BLASTMenuGameNode> = FifoWaitlist.create(listOf(_initialNode))
-
-
-    fun getOrCreateNode(wrappedNode: MenuGameNode<S, A>, supportPrecision: P): BLASTMenuGameNode =
-        nodes.getOrPut(wrappedNode) { BLASTMenuGameNode(wrappedNode, supportPrecision) }
-
-    override val initialNode: MenuGameNode<S, A>
-        get() = _initialNode.wrappedNode
+    private fun createNode(wrappedNode: MenuGameNode<S, A>, supportPrecision: P): BLASTMenuGameNode {
+        require(wrappedNode !in wrappedNodeMap)
+        val newNode = BLASTMenuGameNode(wrappedNode, supportPrecision)
+        nodes.add(newNode)
+        wrappedNodeMap[wrappedNode] = newNode
+        return newNode
+    }
 
     val trapNode = MenuGameNode.TrapNode<S, A>()
     val trapDecision = MenuGameAction.EnterTrap<S, A>()
     val trapDirac = dirac(trapNode as MenuGameNode<S, A>)
+    val blastTrapNode = BLASTMenuGameNode(trapNode, initialPrec)
+
+    val nodes = arrayListOf(_initialNode, blastTrapNode)
+    private val wrappedNodeMap = hashMapOf(
+        _initialNode.wrappedNode to _initialNode,
+        trapNode to blastTrapNode
+    )
+    val waitlist: Deque<BLASTMenuGameNode> = ArrayDeque<BLASTMenuGameNode>().apply { add(_initialNode) }
+
+    override val initialNode: MenuGameNode<S, A>
+        get() = _initialNode.wrappedNode
 
     override fun getPlayer(node: MenuGameNode<S, A>): Int = node.player
 
     inner class BLASTExpansionResult(
-        val newEdge: BLASTMenuGameEdge,
+        val newEdge: BLASTMenuGameTransitionEdge,
         val newlyCreated: List<BLASTMenuGameNode>,
-        val revisited: List<BLASTMenuGameNode>
     )
 
     fun expand(
@@ -193,19 +201,11 @@ class BLASTMenuGame<S : ExprState, A : StmtAction, P : Prec>(
             is MenuGameNode.TrapNode -> throw IllegalArgumentException("Result called for unavailable action $action on node $node")
         }
         val newlyCreated = arrayListOf<BLASTMenuGameNode>()
-        val revisited = arrayListOf<BLASTMenuGameNode>()
-        for (menuGameNode in result.support) {
-            if (menuGameNode in nodes) {
-                TODO("how to handle covering here?")
-                revisited.add(nodes[menuGameNode]!!.getLastCoverer())
-            } else {
-                val newNode = getOrCreateNode(menuGameNode, node.supportPrecision)
-                newlyCreated.add(newNode)
-                TODO("check covering here, or when removed from the waitlist?")
-            }
-        }
-        val newEdge = createEdge(action, node, result.transform { nodes[it]!!.getLastCoverer() })
-        return BLASTExpansionResult(newEdge, newlyCreated, revisited)
+        val newEdge = createEdge(action, node, result.transform { menuGameNode ->
+            if (menuGameNode == trapNode) blastTrapNode.also(newlyCreated::add)
+            else createNode(menuGameNode, node.supportPrecision).also(newlyCreated::add)
+        })
+        return BLASTExpansionResult(newEdge, newlyCreated)
     }
 
     fun getAvailableActions(node: BLASTMenuGameNode): Collection<MenuGameAction<S, A>> {
@@ -236,20 +236,23 @@ class BLASTMenuGame<S : ExprState, A : StmtAction, P : Prec>(
         node: MenuGameNode<S, A>,
         action: MenuGameAction<S, A>
     ): FiniteDistribution<MenuGameNode<S, A>> {
-        return (nodes[node]?.outgoingEdges?.get(action)?.end?.transform { it.wrappedNode })
+        return (wrappedNodeMap[node]?.outgoingEdges?.get(action)?.end?.transform { it.getLastCoverer().wrappedNode })
             ?: throw IllegalStateException("node-action pair not available")
     }
 
     val transFuncCache = hashMapOf<Pair<MenuGameNode<S, A>, P?>, Collection<MenuGameAction<S, A>>>()
     override fun getAvailableActions(node: MenuGameNode<S, A>): Collection<MenuGameAction<S, A>> {
-        require(nodes[node]!!.isExpanded()) { "getAvailableActions can only be called on expanded nodes" }
-        return nodes[node]!!.outgoingEdges.keys
+        val blastNode = wrappedNodeMap[node]!!
+        require(blastNode.isExpanded() || blastNode.coveringNode != null) { "getAvailableActions can only be called on expanded nodes" }
+        return blastNode.outgoingEdges.keys
     }
 
-
     fun fullyExplore() {
-        while (!waitlist.isEmpty) {
+        while (!waitlist.isEmpty()) {
             val currNode = waitlist.remove()
+            if (currNode == blastTrapNode) continue
+            require(!currNode.isComplete())
+            require(currNode in nodes)
             close(currNode)
             if (currNode.coveringNode == null) {
                 val expansionResult = currNode.expand()
@@ -259,13 +262,18 @@ class BLASTMenuGame<S : ExprState, A : StmtAction, P : Prec>(
     }
 
     fun close(node: BLASTMenuGameNode) {
+        // This differs from the original BLAST algorithm, as there was no covering node there
+        // instead, it only marked the node as "covered" (in general, by all the other nodes)
+        // and used timestamps to determine which nodes need to be unmarked after refinement
+        // Pro for the original: a node can be covered by the union of other nodes instead of only one specific node
+        //      and only one cover check is needed (although with a potentially larger formula,
+        //      which needs to be often recomputed)
+        // Con for the original: unmarking is less precise, and it might be much harder to implement the one-shot cover
+        //      check for domains other than PRED
         if (node.wrappedNode is MenuGameNode.StateNode) {
-            for ((_, bNode) in nodes) {
-                val coverer = nodes.values.find { bNode canBeCoveredBy it }
-                if (coverer != null) {
-                    bNode.coverWith(coverer)
-                    break
-                }
+            val coverer = nodes.find { node canBeCoveredBy it }
+            if (coverer != null) {
+                node.coverWith(coverer)
             }
         }
     }
@@ -282,9 +290,10 @@ class BLASTMenuGame<S : ExprState, A : StmtAction, P : Prec>(
     // Refinement stuff
     // ****************
 
-    private fun removeEdge(edge: BLASTMenuGameEdge) {
+    private fun removeEdge(edge: BLASTMenuGameTransitionEdge) {
         edge.start.outgoingEdges.remove(edge.wrappedAction)
-        waitlist.add(edge.start)
+        if(nodes.contains(edge.start) && !waitlist.contains(edge.start))
+            waitlist.add(edge.start)
         edge.start.makeUnexpanded()
         edge.end.support.forEach {
             it.incomingEdges.remove(edge)
@@ -295,15 +304,18 @@ class BLASTMenuGame<S : ExprState, A : StmtAction, P : Prec>(
     }
 
     private fun removeNode(node: BLASTMenuGameNode) {
-        if (nodes.containsKey(node.wrappedNode)) {
-            nodes.remove(node.wrappedNode)
-            for (outgoingEdge in node.outgoingEdges.values) {
+        if (nodes.contains(node)) {
+            nodes.remove(node)
+            waitlist.remove(node) // the node might have been added to the waitlist during pruning, or it has not been explored yet if refinement is called during exploration
+            wrappedNodeMap.remove(node.wrappedNode)
+            // .toList calls to create a copy
+            for (outgoingEdge in node.outgoingEdges.values.toList()) {
                 removeEdge(outgoingEdge)
             }
-            for (incomingEdge in node.incomingEdges) {
+            for (incomingEdge in node.incomingEdges.toList()) {
                 removeEdge(incomingEdge)
             }
-            for (coveredNode in node.coveredNodes) {
+            for (coveredNode in node.coveredNodes.toList()) {
                 coveredNode.removeCover()
             }
         }
@@ -311,7 +323,7 @@ class BLASTMenuGame<S : ExprState, A : StmtAction, P : Prec>(
 
     private fun prune(node: MenuGameNode<S, A>) {
         if (node == initialNode) throw IllegalArgumentException("Should have called reinitialize instead")
-        removeNode(nodes[node] ?: throw IllegalStateException("Node to prune does not exist"))
+        removeNode(wrappedNodeMap[node] ?: throw IllegalStateException("Node to prune does not exist"))
     }
 
     private fun reinitialize(newInitPrec: P) {
@@ -319,14 +331,31 @@ class BLASTMenuGame<S : ExprState, A : StmtAction, P : Prec>(
         initialize(newInitPrec)
     }
 
+
     fun refine(refinementResult: MenuGameRefiner.RefinementResult<S, A, P>) {
         if (refinementResult.pivotNode == initialNode) {
             reinitialize(refinementResult.newPrec)
         } else {
-            val parents = nodes[refinementResult.pivotNode]!!.incomingEdges.map { it.start }
+            val parents = wrappedNodeMap[refinementResult.pivotNode]!!.incomingEdges.map { it.start }
             parents.forEach { it.extendSupportPrecision(refinementResult.newPrec) }
+            // The original Lazy Abstraction paper describes the algorithm with an option to configure when the subtree
+            // of the pivot node is kept, but it does not describe any specific strategies for it, and the discussion of
+            // termination assumes that it is never kept; for now, we never keep it
             prune(refinementResult.pivotNode)
+            TODO("the lack of information in the parent node might be problematic, especially in EXPL, as the newly introduced variable won't be known here. Check what Henzinger originally did")
+            TODO("maybe propagate the refinement similarly to Kat10's local precision propagation methods?")
+            TODO("also, as the path to a given node is always unambiguous in the reachability tree, and we only care about deterministic assignments for now, " +
+                    "we can always add the information based on the concrete state at the end (~ASG), and propagate it backwards to make it an overapproximation")
+            TODO("the original changes the support prec of only 1 node (the pivot node, which is the first that does not intersect with a backwards bad region), but by how logical refinement is performed, this is enough there." +
+                    "Maybe what we should do with numerical refinement is marking one of the abstraction choices as the bad state and do the same backwards traversal from there? This would give us a different pivot node," +
+                    "and it would lead to a very different refinement method than the original GBAR." +
+                    "More specifically, is the following enough? Perform the traversal backwards from the choice of both strategies in the GB-pivot node, and let the BLAST-pivot-node be the first where" +
+                    "a) not both of them intersect with the node's label or b) their intersection does not intersect with the node [IDK yet which of these is the correct one, if any]." +
+                    "Also, could this be the idea behind using (seq-)interpolation in GBAR?")
         }
     }
 
+    override fun getAllNodes(): Collection<MenuGameNode<S, A>> {
+        return nodes.map { it.wrappedNode }
+    }
 }

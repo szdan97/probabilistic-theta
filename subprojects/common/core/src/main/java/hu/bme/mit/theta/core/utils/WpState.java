@@ -157,7 +157,7 @@ public final class WpState {
 		@Override
 		public WpState visit(SequenceStmt stmt, WpState param) {
 			WpState result = param;
-			for (Stmt subStmt : stmt.getStmts()) {
+			for (Stmt subStmt : Lists.reverse(stmt.getStmts())) {
 				result = result.wp(subStmt);
 			}
 			return result;

@@ -53,7 +53,8 @@ public abstract class MultiaryExpr<OpType extends Type, ExprType extends Type> i
 			return with(ImmutableList.of());
 		} else {
 			final OpType opType = getOps().get(0).getType();
-			final List<Expr<OpType>> newOps = ops.stream().map(op -> TypeUtils.cast(op, opType))
+			final List<Expr<OpType>> newOps =
+					ops.stream().map(op -> TypeUtils.weakCast(op, opType))
 					.collect(toImmutableList());
 			return with(newOps);
 		}

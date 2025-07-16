@@ -13,6 +13,7 @@ import hu.bme.mit.theta.core.type.LitExpr
 import hu.bme.mit.theta.core.type.Type
 import hu.bme.mit.theta.core.type.abstracttype.AbstractExprs
 import hu.bme.mit.theta.core.type.abstracttype.EqExpr
+import hu.bme.mit.theta.core.type.anytype.IteExpr
 import hu.bme.mit.theta.core.type.anytype.RefExpr
 import hu.bme.mit.theta.core.type.booltype.BoolExprs
 import hu.bme.mit.theta.core.type.booltype.BoolExprs.Not
@@ -39,8 +40,8 @@ import hu.bme.mit.theta.prob.analysis.jani.model.IntType as JaniIntType
 import hu.bme.mit.theta.prob.analysis.jani.model.RealType as JaniRealType
 
 fun Model.toSMDP(modelParameterStrings: Map<String, String>): SMDP {
-    require(this.type == ModelType.MDP || this.type == ModelType.DTMC) {
-        "Only DTMC and MDP models are supported yet. "
+    require(this.type in setOf(ModelType.MDP, ModelType.DTMC, ModelType.LTS)) {
+        "Only LTS, DTMC and MDP models are supported yet. "
     }
 
     val constantMap = this.constants.associate {
@@ -372,7 +373,7 @@ fun Automaton.toSMDPAutomaton(
     val localVarMap = this.variables.associate { it.name to it.toThetaVar() }
     val fullVarMap = globalVarMap + localVarMap
     val locationMap = this.locations.associate { it.name to it.toSMDPLocation(fullVarMap, functionMap) }
-    val edges = this.edges.map { it.toSMDPEdge(locationMap, actionMap, fullVarMap, functionMap) }
+    val edges = this.edges.flatMap { it.toSMDPEdge(locationMap, actionMap, fullVarMap, functionMap) }
 
     val initLocs = this.initialLocations.map { locationMap[it]!! }
     require(initLocs.size == 1) {"Only deterministic initial locations are supported yet."}
@@ -414,7 +415,7 @@ fun Edge.toSMDPEdge(
     actionMap: Map<String, SMDP.ActionLabel>,
     varMap: Map<String, VarDecl<*>>,
     functionMap: Map<String, Pair<List<VarDecl<*>>, Expr<*>>>
-): SMDP.Edge {
+): List<SMDP.Edge> {
     val sourceLoc = locationMap[this.location]!!
     val action = this.action?.let(actionMap::get) ?: SMDP.ActionLabel.InnerActionLabel
     val edge = SMDP.Edge(
@@ -426,7 +427,67 @@ fun Edge.toSMDPEdge(
             )
         }
     )
-    return edge
+    return eliminateAllIte(edge)
+}
+
+/**
+ * The RHS must be an ITE on the top-level for this to work
+ */
+private fun eliminateIte(assignment: SMDP.Assignment): List<Pair<Expr<BoolType>, SMDP.Assignment>>? {
+    val rhs = assignment.expr
+    if(rhs is IteExpr<*>) {
+        return listOf(
+            rhs.cond to SMDP.Assignment(assignment.ref, rhs.then, assignment.index),
+            SmartBoolExprs.Not(rhs.cond) to SMDP.Assignment(assignment.ref, rhs.`else`, assignment.index)
+        )
+    } else return null
+}
+
+private fun eliminateFirstIte(dest: SMDP.Destination): List<Pair<Expr<BoolType>, SMDP.Destination>>? {
+    val iteIndex = dest.assignments.indexOfFirst { it.expr is IteExpr<*> }
+    if(iteIndex == -1) return null
+    val eliminated = eliminateIte(dest.assignments[iteIndex])
+    return eliminated!!.map {
+        val modifiedAssignements = dest.assignments.toMutableList()
+        modifiedAssignements[iteIndex] = it.second
+        it.first to SMDP.Destination(dest.probability, modifiedAssignements, dest.loc)
+    }
+}
+
+private fun eliminateFirstIte(edge: SMDP.Edge): List<SMDP.Edge> {
+    var eliminated: List<Pair<Expr<BoolType>, SMDP.Destination>>? = null
+    var eliminatedIndex = -1
+    for (dest in edge.destinations) {
+        eliminatedIndex++
+        eliminated = eliminateFirstIte(dest)
+        if(eliminated != null) break
+    }
+    if(eliminated == null) return listOf(edge)
+    val newEdges: ArrayList<SMDP.Edge> = arrayListOf()
+    for ((addedGuard, newDest) in eliminated) {
+        val newDestList = edge.destinations.toMutableList()
+        newDestList[eliminatedIndex] = newDest
+        val newEdge = SMDP.Edge(
+            edge.sourceLoc,
+            SmartBoolExprs.And(edge.guard, addedGuard),
+            edge.action,
+            newDestList
+        )
+        newEdges.add(newEdge)
+    }
+    edge.sourceLoc.outEdges.remove(edge)
+    return newEdges
+}
+
+private fun eliminateAllIte(edge: SMDP.Edge): List<SMDP.Edge> {
+    var result = listOf(edge)
+    do {
+        val newResult = result.flatMap(::eliminateFirstIte)
+        require(newResult.size >= result.size)
+        val changed = newResult.size > result.size
+        result = newResult
+    } while (changed)
+    return result
 }
 
 fun Expression.toThetaExpr(varMap: Map<String, VarDecl<*>>, functionMap: Map<String, Pair<List<VarDecl<*>>, Expr<*>>>): Expr<*> = when(this) {

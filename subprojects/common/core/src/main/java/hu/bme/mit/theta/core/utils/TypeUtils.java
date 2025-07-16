@@ -19,6 +19,7 @@ import hu.bme.mit.theta.core.decl.Decl;
 import hu.bme.mit.theta.core.decl.VarDecl;
 import hu.bme.mit.theta.core.type.Expr;
 import hu.bme.mit.theta.core.type.Type;
+import hu.bme.mit.theta.core.type.abstracttype.Castable;
 import hu.bme.mit.theta.core.type.bvtype.BvType;
 import hu.bme.mit.theta.core.type.fptype.FpType;
 
@@ -86,6 +87,28 @@ public final class TypeUtils {
 
 		if (expr.getType().equals(type)) {
 			@SuppressWarnings("unchecked") final Expr<T> result = (Expr<T>) expr;
+			return result;
+		} else {
+			throw new ClassCastException("The type of expression " + expr + " is not of type " + type);
+		}
+	}
+
+	/**
+	 * Cast an expression to a given type. Uses a Cast expression if needed.
+ 	 *
+	 * @param expr Original expression
+	 * @param type Type
+	 * @return Casted expression
+	 */
+	public static <T extends Type> Expr<T> weakCast(final Expr<?> expr, final T type) {
+		checkNotNull(expr);
+		checkNotNull(type);
+
+		if (expr.getType().equals(type)) {
+			@SuppressWarnings("unchecked") final Expr<T> result = (Expr<T>) expr;
+			return result;
+		} else if(expr.getType() instanceof Castable) {
+			@SuppressWarnings("unchecked") final Expr<T> result = (Expr<T>) (((Castable) expr.getType()).Cast(expr, type));
 			return result;
 		} else {
 			throw new ClassCastException("The type of expression " + expr + " is not of type " + type);

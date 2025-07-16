@@ -22,6 +22,7 @@ import hu.bme.mit.theta.core.model.MutableValuation;
 import hu.bme.mit.theta.core.stmt.*;
 import hu.bme.mit.theta.core.type.Expr;
 import hu.bme.mit.theta.core.type.LitExpr;
+import hu.bme.mit.theta.core.type.abstracttype.Castable;
 import hu.bme.mit.theta.core.type.abstracttype.EqExpr;
 import hu.bme.mit.theta.core.type.abstracttype.NeqExpr;
 import hu.bme.mit.theta.core.type.anytype.RefExpr;
@@ -84,7 +85,10 @@ public final class StmtApplier {
         final VarDecl<?> varDecl = stmt.getVarDecl();
         final Expr<?> expr = ExprUtils.simplify(stmt.getExpr(), val);
         if (expr instanceof LitExpr<?>) {
-            final LitExpr<?> lit = (LitExpr<?>) expr;
+            final LitExpr<?> lit;
+            if(expr.getType() != varDecl.getType() && expr.getType() instanceof Castable)
+                lit = ((LitExpr<?>) ExprUtils.simplify(((Castable) expr.getType()).Cast(expr, varDecl.getType())));
+            else lit = (LitExpr<?>) expr;
             val.put(varDecl, lit);
             return ApplyResult.SUCCESS;
         } else if (approximate) {

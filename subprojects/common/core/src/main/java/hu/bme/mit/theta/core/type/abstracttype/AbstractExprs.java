@@ -254,7 +254,7 @@ public final class AbstractExprs {
 	 * Helper methods
 	 */
 
-	private static <T extends Type, T1 extends Type, T2 extends Type, C extends Castable<C>> Tuple2<Expr<T>, Expr<T>> unify(
+	static <T extends Type, T1 extends Type, T2 extends Type, C extends Castable<C>> Tuple2<Expr<T>, Expr<T>> unify(
 			final Expr<T1> expr1, final Expr<T2> expr2) {
 		final T1 type1 = expr1.getType();
 		final T2 type2 = expr2.getType();

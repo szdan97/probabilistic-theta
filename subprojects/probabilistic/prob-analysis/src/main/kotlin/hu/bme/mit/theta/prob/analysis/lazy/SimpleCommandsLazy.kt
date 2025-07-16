@@ -56,7 +56,7 @@ class SimpleCommandsLazy(
             {commands}, {errorCommands},
             ExplState.of(initValuation), ExplState.top(), explDomain, goal
         )
-        return checker.fullyExpanded(false, 1e-7)
+        return checker.checkWithFullExpansion(false, 1e-7)
     }
 
     private class ExplDomain(

@@ -6,13 +6,16 @@ import hu.bme.mit.theta.analysis.expl.ExplPrec
 import hu.bme.mit.theta.analysis.expl.ExplState
 import hu.bme.mit.theta.analysis.expr.StmtAction
 import hu.bme.mit.theta.analysis.expr.refinement.ExprTraceSeqItpChecker
+import hu.bme.mit.theta.analysis.pred.ExprSplitters.ExprSplitter
 import hu.bme.mit.theta.analysis.pred.PredOrd
 import hu.bme.mit.theta.analysis.pred.PredState
 import hu.bme.mit.theta.core.stmt.Stmts
 import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.booltype.BoolExprs
 import hu.bme.mit.theta.core.type.booltype.BoolExprs.True
+import hu.bme.mit.theta.core.type.booltype.BoolLitExpr
 import hu.bme.mit.theta.core.type.booltype.BoolType
+import hu.bme.mit.theta.core.type.booltype.SmartBoolExprs
 import hu.bme.mit.theta.core.utils.ExprUtils
 import hu.bme.mit.theta.core.utils.PathUtils
 import hu.bme.mit.theta.core.utils.WpState
@@ -32,7 +35,8 @@ class SMDPPredDomain(
     val smtSolver: Solver,
     val itpSolver: ItpSolver,
     val ucSolver: UCSolver,
-    val useItp: Boolean = false
+    val useItp: Boolean,
+    val exprSplitter: ExprSplitter
 ): LazyDomain<SMDPState<ExplState>, SMDPState<PredState>, SMDPCommandAction> {
     val ord = PredOrd.create(smtSolver)
 
@@ -88,9 +92,16 @@ class SMDPPredDomain(
                 val pattern = itpSolver.createBinPattern(A, B)
                 if (itpSolver.check().isSat)
                     throw IllegalArgumentException("Block failed: Concrete state $concrState does not contradict $expr")
-                itp = itpSolver.getInterpolant(pattern).eval(A)
+                itp = PathUtils.foldin(itpSolver.getInterpolant(pattern).eval(A), 0)
             }
 
+            val itpConjuncts = exprSplitter.apply(itp).map {
+                val p = ExprUtils.ponate(it)
+                val truth = (p.eval(concrState.domainState) as BoolLitExpr).value
+                if(truth) p
+                else SmartBoolExprs.Not(p)
+            }
+            /*
             val itpConjuncts = ExprUtils.getConjuncts(PathUtils.foldin(itp, 0)).filter {
                 WithPushPop(smtSolver).use { _ ->
                     smtSolver.add(PathUtils.unfold(abstrState.toExpr(), 0))
@@ -98,10 +109,21 @@ class SMDPPredDomain(
                     smtSolver.check().isSat
                 }
             }
+             */
             val newConjuncts = abstrState.domainState.preds.toSet().union(itpConjuncts)
 
             PredState.of(newConjuncts)
         } else {
+            val newPred = SmartBoolExprs.Not(expr)
+            val addedConjuncts = exprSplitter.apply(newPred).map {
+                val p = ExprUtils.ponate(it)
+                val truth = (p.eval(concrState.domainState) as BoolLitExpr).value
+                if(truth) p
+                else SmartBoolExprs.Not(p)
+            }
+            val newConjuncts = abstrState.domainState.preds.toSet().union(addedConjuncts)
+            PredState.of(newConjuncts)
+            /*
             val newPred = ExprUtils.canonize(BoolExprs.Not(expr))
             if (abstrState.domainState.preds.contains(newPred)) abstrState.domainState
             else {
@@ -114,6 +136,7 @@ class SMDPPredDomain(
                     PredState.of(abstrState.domainState.preds + newPred)
                 } else abstrState.domainState
             }
+             */
         }
 
         return SMDPState(newAbstract, abstrState.locs)
@@ -142,8 +165,8 @@ class SMDPPredDomain(
                 //.drop(1)
                 .take(nodes.size)
             ).map { (node, itp) ->
-                val itpConjuncts = ExprUtils.getConjuncts(PathUtils.foldin(itp, 0))
-                    .map { ExprUtils.simplify(it) }
+//                val itpConjuncts = ExprUtils.getConjuncts(PathUtils.foldin(itp, 0))
+//                    .map { ExprUtils.simplify(it) }
 //                    .filter {
 //                        WithPushPop(smtSolver).use { _ ->
 //                            smtSolver.add(PathUtils.unfold(node.sa.toExpr(), 0))
@@ -151,6 +174,12 @@ class SMDPPredDomain(
 //                            smtSolver.check().isSat
 //                        }
 //                    }
+                val itpConjuncts = exprSplitter.apply(itp).map {
+                    val p = ExprUtils.ponate(it)
+                    val truth = (p.eval(node.sc.domainState) as BoolLitExpr).value
+                    if(truth) p
+                    else SmartBoolExprs.Not(p)
+                }
                 val newConjuncts = node.sa.domainState.preds.toSet().union(itpConjuncts)
 
                 SMDPState(PredState.of(newConjuncts), node.sc.locs)

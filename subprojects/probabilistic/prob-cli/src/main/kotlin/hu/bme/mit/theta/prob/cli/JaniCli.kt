@@ -7,14 +7,19 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.double
 import com.github.ajalt.clikt.parameters.types.enum
+import com.github.ajalt.clikt.parameters.types.int
+import com.github.ajalt.clikt.parameters.types.restrictTo
 import hu.bme.mit.theta.analysis.InitFunc
+import hu.bme.mit.theta.analysis.PartialOrd
 import hu.bme.mit.theta.analysis.Prec
 import hu.bme.mit.theta.analysis.expl.ExplInitFunc
+import hu.bme.mit.theta.analysis.expl.ExplOrd
 import hu.bme.mit.theta.analysis.expl.ExplPrec
 import hu.bme.mit.theta.analysis.expl.ItpRefToExplPrec
 import hu.bme.mit.theta.analysis.expr.ExprState
 import hu.bme.mit.theta.analysis.expr.refinement.*
 import hu.bme.mit.theta.analysis.pred.*
+import hu.bme.mit.theta.analysis.pred.ExprSplitters.ExprSplitter
 import hu.bme.mit.theta.common.visualization.writer.GraphvizWriter
 import hu.bme.mit.theta.core.model.ImmutableValuation
 import hu.bme.mit.theta.core.type.Expr
@@ -25,6 +30,7 @@ import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.prob.analysis.besttransformer.*
 import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.BestTransformerGameAction
 import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.BestTransformerGameNode
+import hu.bme.mit.theta.prob.analysis.besttransformer.PivotSelectionStrategy
 import hu.bme.mit.theta.prob.analysis.direct.SMDPDirectChecker
 import hu.bme.mit.theta.prob.analysis.direct.SMDPDirectCheckerGame
 import hu.bme.mit.theta.prob.analysis.jani.*
@@ -38,6 +44,7 @@ import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.LinkedTransFunc
 import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.PredLinkedTransFunc
 import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.SMDPLinkedTransFunc
 import hu.bme.mit.theta.prob.analysis.menuabstraction.*
+import hu.bme.mit.theta.prob.analysis.menuabstraction.firstRefinable
 import hu.bme.mit.theta.prob.cli.JaniCLI.Domain.*
 import hu.bme.mit.theta.probabilistic.Goal
 import hu.bme.mit.theta.probabilistic.StochasticGameSolver
@@ -86,7 +93,13 @@ class JaniCLI : CliktCommand() {
         EXACT(true, true, {true}, {true})
     }
     enum class AbstractionMethod() {
-        LAZY, MENU_LAZY, MENU, BT
+        LAZY, MENU_LAZY, MENU, BT,
+        MENU_BLAST, BT_BLAST
+    }
+    enum class ExprSplitting(val exprSplitter: ExprSplitter) {
+        WHOLE(ExprSplitters.whole()),
+        CONJUNCTS(ExprSplitters.conjuncts()),
+        ATOMS(ExprSplitters.atoms()),
     }
 
     val model: String by option("-m", "--model", "-i", "--input",
@@ -113,6 +126,7 @@ class JaniCLI : CliktCommand() {
     val approximation by option(
         help = "Approximation direction to use."
     ).enum<Approximation>().required()
+    val exactTarget by option("--exactTarget").flag(default = false)
     val property: String? by option(
         help = "Name of the JANI property to check. All properties are checked in sequence if not given."
     )
@@ -126,6 +140,8 @@ class JaniCLI : CliktCommand() {
     val sequenceInterpolation by option("--seq",
         help = "Use sequence interpolation for refinement in lazy abstraction."
     ).flag("--noseq", default = true)
+    val exprSplitting by option("--expr-splitting", "--split").enum<ExprSplitting>().default(ExprSplitting.ATOMS)
+    val gameMultiRefinement by option("--multiref").int().restrictTo(min =1).default(1)
     val merge by option("--merge").flag("--nomerge", default = false)
     val eliminateSpurious by option("--elim",
         help = "Use interpolation to eliminate (almost-)spurious pivot nodes during game refinement." +
@@ -193,6 +209,8 @@ class JaniCLI : CliktCommand() {
                     AbstractionMethod.LAZY, AbstractionMethod.MENU_LAZY -> lazy(solver, itpSolver, ucSolver, task, smdp)
                     AbstractionMethod.MENU -> menu(solver, itpSolver, ucSolver, task, smdp)
                     AbstractionMethod.BT -> bestTransformer(solver, itpSolver, ucSolver, task, smdp)
+                    AbstractionMethod.MENU_BLAST -> TODO()
+                    AbstractionMethod.BT_BLAST -> TODO()
                 }
                 log("result: ${prop.name}: $result", true)
             } else if(prop is SMDPProperty.ExpectationProperty && domain == NONE) {
@@ -331,6 +349,7 @@ class JaniCLI : CliktCommand() {
         val refiner = MenuGameRefiner<SMDPState<D>, SMDPCommandAction, P, R>(
             solver,
             extend,
+            firstRefinable,
             eliminateSpurious,
             traceChecker,
             refToPrec
@@ -441,7 +460,12 @@ class JaniCLI : CliktCommand() {
         )
 
         val refiner = BestTransformerRefiner<SMDPState<D>, SMDPCommandAction, P, R>(
-            solver, extend, pivotSelectionStrategy, eliminateSpurious, traceChecker, refToPrec
+            solver,
+            extend,
+            pivotSelectionStrategy,
+            eliminateSpurious,
+            traceChecker,
+            refToPrec
         )
 
         val checker = BestTransformerCegarChecker(
@@ -470,13 +494,15 @@ class JaniCLI : CliktCommand() {
             strategy,
             approximation.useMayStandard,
             approximation.useMustStandard,
-            approximation.useMayTarget(task.goal),
-            approximation.useMustTarget(task.goal),
+            exactTarget || approximation.useMayTarget(task.goal),
+            exactTarget || approximation.useMustTarget(task.goal),
             threshold,
             sequenceInterpolation,
             this.abstraction == AbstractionMethod.MENU_LAZY,
             preproc,
-            merge
+            merge,
+            exprSplitting.exprSplitter,
+            gameMultiRefinement
         )
 
         if (model.getAllVars().size < 30) {

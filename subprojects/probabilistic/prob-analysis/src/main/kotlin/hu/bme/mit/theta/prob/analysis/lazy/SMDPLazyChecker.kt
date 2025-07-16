@@ -5,10 +5,8 @@ import hu.bme.mit.theta.analysis.expl.ExplPrec
 import hu.bme.mit.theta.analysis.expl.ExplState
 import hu.bme.mit.theta.analysis.expl.ExplStmtTransFunc
 import hu.bme.mit.theta.analysis.expr.ExprState
-import hu.bme.mit.theta.analysis.pred.PredAbstractors
-import hu.bme.mit.theta.analysis.pred.PredInitFunc
-import hu.bme.mit.theta.analysis.pred.PredPrec
-import hu.bme.mit.theta.analysis.pred.PredState
+import hu.bme.mit.theta.analysis.pred.*
+import hu.bme.mit.theta.analysis.pred.ExprSplitters.ExprSplitter
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.prob.analysis.jani.*
 import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.Algorithm.*
@@ -42,7 +40,9 @@ class SMDPLazyChecker(
     val useSeq: Boolean = false,
     val useGameRefinement: Boolean = false,
     val useQualitativePreprocessing: Boolean = false,
-    val mergeSameSCNodes: Boolean = false
+    val mergeSameSCNodes: Boolean = false,
+    val exprSplitter: ExprSplitter = ExprSplitters.atoms(), // used only for the pred domain
+    val gameMultiRefinement: Int = 1,
 ) {
 
     enum class BRTDPStrategy {
@@ -73,15 +73,17 @@ class SMDPLazyChecker(
 
         val varOrder = smdp.getAllVars()
         val extract = { s: SMDPState<ExplState> ->
+            s.locs/*
             varOrder.map { v ->
                 s.domainState.`val`.eval(v).orElse(null)
             }
+            */
         }
 
         val subResult = when (algorithm) {
             BRTDP -> checker.brtdp(successorSelection, threshold)
-            VI -> checker.fullyExpanded(false, threshold, extract)
-            BVI -> checker.fullyExpanded(true, threshold, extract)
+            VI -> checker.checkWithFullExpansion(false, threshold, extract)
+            BVI -> checker.checkWithFullExpansion(true, threshold, extract)
         }
 
         return if (smdpReachabilityTask.negateResult) 1.0 - subResult else subResult
@@ -95,10 +97,14 @@ class SMDPLazyChecker(
         val checker = getInnerCheckerPred(smdp, smdpReachabilityTask)
         val successorSelection = getSuccessorSelection<PredState>()
 
+        val extract = { s: SMDPState<PredState> ->
+            s.locs
+        }
+
         val subResult = when (algorithm) {
             BRTDP -> checker.brtdp(successorSelection, threshold)
-            VI -> checker.fullyExpanded(false, threshold)
-            BVI -> checker.fullyExpanded(true, threshold)
+            VI -> checker.checkWithFullExpansion(false, threshold, extract)
+            BVI -> checker.checkWithFullExpansion(true, threshold, extract)
         }
 
         return if (smdpReachabilityTask.negateResult) 1.0 - subResult else subResult
@@ -155,7 +161,8 @@ class SMDPLazyChecker(
             useSeq = useSeq,
             useGameRefinement = useGameRefinement,
             useQualitativePreprocessing = useQualitativePreprocessing,
-            mergeSameSCNodes = mergeSameSCNodes
+            mergeSameSCNodes = mergeSameSCNodes,
+            gameMultiRefinement = gameMultiRefinement
         )
     }
 
@@ -203,7 +210,7 @@ class SMDPLazyChecker(
                     )
             }
 
-        val predDomain = SMDPPredDomain(domainTransFunc, fullPrec, smtSolver, itpSolver, ucSolver, false)
+        val predDomain = SMDPPredDomain(domainTransFunc, fullPrec, smtSolver, itpSolver, ucSolver, false, exprSplitter)
         return ProbLazyChecker(
             ::commandsWithPrecondition, { targetCommands(it.locs) },
             fullInit.first(), topInit.first(),
@@ -217,7 +224,8 @@ class SMDPLazyChecker(
             useSeq = useSeq,
             useGameRefinement = useGameRefinement,
             useQualitativePreprocessing = useQualitativePreprocessing,
-            mergeSameSCNodes = mergeSameSCNodes
+            mergeSameSCNodes = mergeSameSCNodes,
+            gameMultiRefinement = gameMultiRefinement
         )
     }
 

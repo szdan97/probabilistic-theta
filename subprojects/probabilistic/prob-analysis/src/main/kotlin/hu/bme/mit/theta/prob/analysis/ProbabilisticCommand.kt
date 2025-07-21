@@ -16,6 +16,6 @@ data class ProbabilisticCommand<A: Action>(
     )
 
     override fun toString(): String {
-        return "guard: ${this.guard}\nresult: ${this.result}"
+        return "guard: ${this.guard}\nresult: ${this.result.pmf.entries.joinToString(separator = "\n") { "${it.value}: ${it.key}" }}"
     }
 }

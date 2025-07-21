@@ -4,16 +4,18 @@ import hu.bme.mit.theta.analysis.PartialOrd
 import hu.bme.mit.theta.analysis.Prec
 import hu.bme.mit.theta.analysis.expr.ExprState
 import hu.bme.mit.theta.analysis.expr.StmtAction
+import hu.bme.mit.theta.probabilistic.Goal
 
 abstract class BasicUnit<Self : BasicUnit<Self, D, A, P>, D : ExprState, A : StmtAction, P : Prec>(
     var stateLabel: D,
     var supportPrec: P,
     val partialOrder: PartialOrd<D>
-) : PARGUnit<Self, D, A, P> {
+) : PARTUnit<Self, D, A, P> {
     protected var fullyExpanded = false
     protected var coveringUnit: Self? = null
     protected val coveredUnits = arrayListOf<Self>()
-    protected var target = false
+    protected var mayTarget = false
+    protected var mustTarget = false
 
     override fun toString(): String {
         return "Unit(${getState()} | ${getSupportPrecision()})"
@@ -42,11 +44,17 @@ abstract class BasicUnit<Self : BasicUnit<Self, D, A, P>, D : ExprState, A : Stm
         coveringUnit = null
     }
 
-    override fun markAsTarget() {
-        target = true
+    override fun markAsMayBeTarget() {
+        mayTarget = true
     }
 
-    override fun isTarget(): Boolean = target
+    override fun mayBeTarget() = mayTarget
+
+    override fun markAsMustBeTarget() {
+        mustTarget = true
+    }
+
+    override fun mustBeTarget() = mustTarget
 
     override fun getSupportPrecision() = supportPrec
 
@@ -92,4 +100,8 @@ abstract class BasicUnit<Self : BasicUnit<Self, D, A, P>, D : ExprState, A : Stm
         // TODO: for now, we do not directly reexpand or relabel here. The current BLAST implementation is compatible with this
         //  decision, especially as it never uses refineState().
     }
+
+    fun isTarget(originalGoal: Goal, abstractionGoal: Goal) =
+        (mustBeTarget()
+                || (mayBeTarget() && abstractionGoal == Goal.MAX))
 }

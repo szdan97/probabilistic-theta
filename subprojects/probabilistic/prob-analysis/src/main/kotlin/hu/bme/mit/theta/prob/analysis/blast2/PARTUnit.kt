@@ -6,7 +6,14 @@ import hu.bme.mit.theta.analysis.expr.StmtAction
 import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.booltype.BoolType
 
-interface PARGUnit<Self : PARGUnit<Self, D, A, P>, D : ExprState, A : StmtAction, P : Prec> {
+/**
+ * Generic interface for Units in a Probabilistic Abstract Reachability Tree.
+ * A Unit generally consists of a single state node, labeled by an abstract state,
+ * and its successor intermediate nodes, which enable the separation of original and
+ * abstraction-induced non-determinism.
+ * This separation is the main underlying idea of game-based abstraction-refinement methods).
+ */
+interface PARTUnit<Self : PARTUnit<Self, D, A, P>, D : ExprState, A : StmtAction, P : Prec> {
     fun getSupportPrecision(): P
     fun getState(): D
     fun expand(prec: P): Collection<Self>
@@ -36,8 +43,11 @@ interface PARGUnit<Self : PARGUnit<Self, D, A, P>, D : ExprState, A : StmtAction
     fun coverWith(coveringNode: Self)
     fun removeCover()
 
-    fun markAsTarget()
-    fun isTarget(): Boolean
+    fun markAsMayBeTarget()
+    fun mayBeTarget(): Boolean
+
+    fun markAsMustBeTarget()
+    fun mustBeTarget(): Boolean
 
     // fun remove()
     fun removeSubtree(): RemovedAndUnlabeledNodes<Self>

@@ -20,19 +20,21 @@ class BTUnit<D : ExprState, A : StmtAction, P : Prec>(
 ) : BasicUnit<BTUnit<D, A, P>, D, A, P>(state, supportPrec, partialOrder) {
 
     inner class IntermediateNode(
-        val results: Map<ProbabilisticCommand<A>, FiniteDistribution<Pair<A, BTUnit<D,A,P>>>>
+        val results: Map<ProbabilisticCommand<A>, FiniteDistribution<Pair<A, BTUnit<D, A, P>>>>
     ) {
-
+        override fun toString(): String {
+            return "ItmNode"
+        }
     }
 
     val intermediateNodes = arrayListOf<IntermediateNode>()
 
     override fun expand(prec: P): Collection<BTUnit<D, A, P>> {
-        require(!isCovered()) {"Covered units should not be expanded!"}
-        require(intermediateNodes.isEmpty()) {"Expanding already (partially) expanded BT units is not supported"}
+        require(!isCovered()) { "Covered units should not be expanded!" }
+        require(intermediateNodes.isEmpty()) { "Expanding already (partially) expanded BT units is not supported" }
         val commands = lts.getAvailableCommands(getState()).toList()
         val equivalenceClasses = transFunc.getNextStates(getState(), commands, prec)
-        val successorUnits = arrayListOf<BTUnit<D,A,P>>()
+        val successorUnits = arrayListOf<BTUnit<D, A, P>>()
         for (eqClass in equivalenceClasses) {
             val newNode = IntermediateNode(
                 eqClass.toMap().mapValues { (key, value) ->

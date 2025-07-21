@@ -18,9 +18,16 @@ import hu.bme.mit.theta.core.type.booltype.BoolExprs.And
 import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.core.type.inttype.IntExprs.*
 import hu.bme.mit.theta.core.utils.ExprUtils
+import hu.bme.mit.theta.prob.analysis.besttransformer.BasicBestTransformerTransFunc
+import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerTransFunc
+import hu.bme.mit.theta.prob.analysis.besttransformer.explGetGuardSatisfactionConfigs
+import hu.bme.mit.theta.prob.analysis.besttransformer.predGetGuardSatisfactionConfigs
 import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.ExplLinkedTransFunc
 import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.PredLinkedTransFunc
 import hu.bme.mit.theta.prob.analysis.menuabstraction.*
+import hu.bme.mit.theta.probabilistic.Goal
+import hu.bme.mit.theta.probabilistic.gamesolvers.VISolver
+import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.TargetSetLowerInitializer
 import hu.bme.mit.theta.solver.z3.Z3SolverFactory
 import hu.bme.mit.theta.xta.analysis.expl.XtaExplUtils
 import org.junit.Test
@@ -44,8 +51,10 @@ class BLASTCheckerTest {
     lateinit var explLts: SimpleProbLTS<ExplState>
     lateinit var predLts: SimpleProbLTS<PredState>
 
-    lateinit var explTransFunc: MenuGameTransFunc<ExplState, StmtAction, ExplPrec>
-    lateinit var predTransFunc: MenuGameTransFunc<PredState, StmtAction, PredPrec>
+    lateinit var explMenuTransFunc: MenuGameTransFunc<ExplState, StmtAction, ExplPrec>
+    lateinit var predMenuTransFunc: MenuGameTransFunc<PredState, StmtAction, PredPrec>
+    lateinit var explBTTransFunc: BestTransformerTransFunc<ExplState, StmtAction, ExplPrec>
+    lateinit var predBTTransFunc: BestTransformerTransFunc<PredState, StmtAction, PredPrec>
 
     private fun simpleSetup() {
         // [A < 2 && B < 3]:
@@ -67,15 +76,25 @@ class BLASTCheckerTest {
         predLts = SimpleProbLTS(commands)
         targetExpr = Eq(A.ref, Int(2))
 
-        predTransFunc =
+        predMenuTransFunc =
             BasicMenuGameTransFunc(
                 PredLinkedTransFunc(solver),
                 predCanBeDisabled(solver)
             )
-        explTransFunc =
+        explMenuTransFunc =
             BasicMenuGameTransFunc(
                 ExplLinkedTransFunc(0, solver),
                 ::explCanBeDisabled
+            )
+        predBTTransFunc =
+            BasicBestTransformerTransFunc(
+                PredLinkedTransFunc(solver),
+                predGetGuardSatisfactionConfigs(solver)
+            )
+        explBTTransFunc =
+            BasicBestTransformerTransFunc(
+                ExplLinkedTransFunc(0, solver),
+                explGetGuardSatisfactionConfigs(solver)
             )
     }
 
@@ -85,20 +104,30 @@ class BLASTCheckerTest {
         simpleSetup()
 
         val initPrec = ExplPrec.of(listOf(A))
+        val LReward = createBLASTMENUGameRewardFun<ExplState, StmtAction, ExplPrec>(Goal.MAX, Goal.MIN)
+        val UReward = createBLASTMENUGameRewardFun<ExplState, StmtAction, ExplPrec>(Goal.MAX, Goal.MAX)
         val checker = BLASTChecker<
                 MENUUnit<ExplState, StmtAction, ExplPrec>,
-                ExplState, StmtAction, ExplPrec
+                ExplState, StmtAction, ExplPrec,
+                BLASTMENUGameNode<ExplState, StmtAction, ExplPrec>,
+                BLASTMENUGameAction<ExplState, StmtAction, ExplPrec>,
                 >(
             fullInit, explInit,
             {s,p -> MENUUnit(s, p, null,
                 ExplOrd.getInstance(), explLts,
-                explTransFunc, ::explMaySatisfy,
+                explMenuTransFunc, ::explMaySatisfy,
             ) },
             targetExpr,
             ::explMaySatisfy,
             {s, e -> XtaExplUtils.interpolate(s, e).toExpr() },
             {v, e -> XtaExplUtils.interpolate(v, e).toExpr()},
-            {p, e -> p.join(ExplPrec.of(ExprUtils.getVars(e)))}
+            {p, e -> p.join(ExplPrec.of(ExprUtils.getVars(e))) },
+            ::BlastMenuGame,
+            VISolver(1e-7, false),
+            LReward, UReward,
+            { if (it is BLASTMENUGameNode.StateNode) it.origin else null },
+            TargetSetLowerInitializer(LReward.isTarget),
+            TargetSetLowerInitializer(UReward.isTarget)
         )
         val root = checker.doInitialExploration(initPrec)
         val game = BlastMenuGame(root)
@@ -107,4 +136,40 @@ class BLASTCheckerTest {
         println(dot)
     }
 
+    @Test
+    fun btExplExplorationTest() {
+        simpleSetup()
+
+        val initPrec = ExplPrec.of(listOf(A))
+        val LReward = createBLASTBTGameRewardFunction<ExplState, StmtAction, ExplPrec>(Goal.MAX, Goal.MIN)
+        val UReward = createBLASTBTGameRewardFunction<ExplState, StmtAction, ExplPrec>(Goal.MAX, Goal.MAX)
+        val checker = BLASTChecker<
+                BTUnit<ExplState, StmtAction, ExplPrec>,
+                ExplState, StmtAction, ExplPrec,
+                BLASTBTGameNode<ExplState, StmtAction, ExplPrec>,
+                BLASTBTGameAction<ExplState, StmtAction, ExplPrec>,
+                >(
+            fullInit, explInit,
+            {s,p -> BTUnit(s, p,
+                ExplOrd.getInstance(), explLts,
+                explBTTransFunc,// ::explMaySatisfy,
+            ) },
+            targetExpr,
+            ::explMaySatisfy,
+            {s, e -> XtaExplUtils.interpolate(s, e).toExpr() },
+            {v, e -> XtaExplUtils.interpolate(v, e).toExpr()},
+            {p, e -> p.join(ExplPrec.of(ExprUtils.getVars(e)))},
+            ::BLASTBTGame,
+            VISolver(1e-7, false),
+            LReward, UReward,
+            { if (it is BLASTBTGameNode.StateNode) it.origin else null },
+            TargetSetLowerInitializer(LReward.isTarget),
+            TargetSetLowerInitializer(UReward.isTarget)
+        )
+        val root = checker.doInitialExploration(initPrec)
+        val game = BLASTBTGame(root)
+        val viz = game.materialize().materializedGame.visualize()
+        val dot = GraphvizWriter.getInstance().writeString(viz)
+        println(dot)
+    }
 }

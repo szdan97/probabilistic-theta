@@ -8,7 +8,7 @@ import hu.bme.mit.theta.prob.analysis.BasicStmtAction
 import java.util.*
 
 class ProjectedStateNode<D : ExprState, A : StmtAction, P : Prec>(
-    val origin: PARGUnit<*, D, A, P>,
+    val origin: PARTUnit<*, D, A, P>,
 ) {
     val state get() = origin.getState()
     val supportPrecision get() = origin.getSupportPrecision()
@@ -67,7 +67,7 @@ class ProjectedStateNode<D : ExprState, A : StmtAction, P : Prec>(
 
 }
 
-fun <U : PARGUnit<U, D, A, P>, D : ExprState, A : StmtAction, P : Prec> createFullStateNodeProjection(rootUnit: U): Map<U, ProjectedStateNode<D, A, P>> {
+fun <U : PARTUnit<U, D, A, P>, D : ExprState, A : StmtAction, P : Prec> createFullStateNodeProjection(rootUnit: U): Map<U, ProjectedStateNode<D, A, P>> {
     val map = hashMapOf<U, ProjectedStateNode<D, A, P>>()
     val q = ArrayDeque<U>()
     q.add(rootUnit)

@@ -5,19 +5,16 @@ import hu.bme.mit.theta.analysis.expl.ExplOrd
 import hu.bme.mit.theta.analysis.expl.ExplPrec
 import hu.bme.mit.theta.analysis.expl.ExplState
 import hu.bme.mit.theta.analysis.expr.StmtAction
-import hu.bme.mit.theta.analysis.pred.PredAbstractors
-import hu.bme.mit.theta.analysis.pred.PredInitFunc
-import hu.bme.mit.theta.analysis.pred.PredPrec
-import hu.bme.mit.theta.analysis.pred.PredState
+import hu.bme.mit.theta.analysis.pred.*
 import hu.bme.mit.theta.common.visualization.writer.GraphvizWriter
 import hu.bme.mit.theta.core.decl.Decls
-import hu.bme.mit.theta.core.stmt.Stmts
 import hu.bme.mit.theta.core.stmt.Stmts.Assign
 import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.booltype.BoolExprs.And
 import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.core.type.inttype.IntExprs.*
 import hu.bme.mit.theta.core.utils.ExprUtils
+import hu.bme.mit.theta.core.utils.PathUtils
 import hu.bme.mit.theta.prob.analysis.besttransformer.BasicBestTransformerTransFunc
 import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerTransFunc
 import hu.bme.mit.theta.prob.analysis.besttransformer.explGetGuardSatisfactionConfigs
@@ -28,9 +25,20 @@ import hu.bme.mit.theta.prob.analysis.menuabstraction.*
 import hu.bme.mit.theta.probabilistic.Goal
 import hu.bme.mit.theta.probabilistic.gamesolvers.VISolver
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.TargetSetLowerInitializer
+import hu.bme.mit.theta.solver.utils.WithPushPop
 import hu.bme.mit.theta.solver.z3.Z3SolverFactory
 import hu.bme.mit.theta.xta.analysis.expl.XtaExplUtils
 import org.junit.Test
+import java.awt.Color
+
+private typealias ExplBTNode = BLASTBTGameNode<ExplState, StmtAction, ExplPrec>
+private typealias ExplBTAction = BLASTBTGameAction<ExplState, StmtAction, ExplPrec>
+private typealias ExplMenuNode = BLASTMENUGameNode<ExplState, StmtAction, ExplPrec>
+private typealias ExplMenuAction = BLASTMENUGameAction<ExplState, StmtAction, ExplPrec>
+private typealias PredBTNode = BLASTBTGameNode<PredState, StmtAction, PredPrec>
+private typealias PredBTAction = BLASTBTGameAction<PredState, StmtAction, PredPrec>
+private typealias PredMenuNode = BLASTMENUGameNode<PredState, StmtAction, PredPrec>
+private typealias PredMenuAction = BLASTMENUGameAction<PredState, StmtAction, PredPrec>
 
 class BLASTCheckerTest {
 
@@ -56,6 +64,8 @@ class BLASTCheckerTest {
     lateinit var explBTTransFunc: BestTransformerTransFunc<ExplState, StmtAction, ExplPrec>
     lateinit var predBTTransFunc: BestTransformerTransFunc<PredState, StmtAction, PredPrec>
 
+    val exprSplitter = ExprSplitters.atoms()
+
     private fun simpleSetup() {
         // [A < 2 && B < 3]:
         // - 0.8: A:=A+1
@@ -63,11 +73,8 @@ class BLASTCheckerTest {
         // [C < 3]:
         // - 1.0: C:=C+1
         val commands = listOf(
-            And(Lt(A.ref, Int(2)), Lt(B.ref, Int(1))).then(
-                0.8 to Stmts.SequenceStmt(listOf(
-                    Assign(A, Add(A.ref, Int(1))),
-                    Assign(B, Add(B.ref, Int(1))),
-                )),
+            And(Lt(A.ref, Int(2)), Lt(B.ref, Int(3))).then(
+                0.8 to Assign(A, Add(A.ref, Int(1))),
                 0.2 to Assign(B, Add(B.ref, Int(1)))
             ),
             Lt(C.ref, Int(3)).then(1.0 to Assign(C, Add(C.ref, Int(1))))
@@ -98,57 +105,75 @@ class BLASTCheckerTest {
             )
     }
 
-
     @Test
     fun menuExplExplorationTest() {
         simpleSetup()
 
-        val initPrec = ExplPrec.of(listOf(A))
-        val LReward = createBLASTMENUGameRewardFun<ExplState, StmtAction, ExplPrec>(Goal.MAX, Goal.MIN)
-        val UReward = createBLASTMENUGameRewardFun<ExplState, StmtAction, ExplPrec>(Goal.MAX, Goal.MAX)
-        val checker = BLASTChecker<
-                MENUUnit<ExplState, StmtAction, ExplPrec>,
-                ExplState, StmtAction, ExplPrec,
-                BLASTMENUGameNode<ExplState, StmtAction, ExplPrec>,
-                BLASTMENUGameAction<ExplState, StmtAction, ExplPrec>,
-                >(
-            fullInit, explInit,
-            {s,p -> MENUUnit(s, p, null,
-                ExplOrd.getInstance(), explLts,
-                explMenuTransFunc, ::explMaySatisfy,
-            ) },
-            targetExpr,
-            ::explMaySatisfy,
-            {s, e -> XtaExplUtils.interpolate(s, e).toExpr() },
-            {v, e -> XtaExplUtils.interpolate(v, e).toExpr()},
-            {p, e -> p.join(ExplPrec.of(ExprUtils.getVars(e))) },
-            ::BlastMenuGame,
-            VISolver(1e-7, false),
-            LReward, UReward,
-            { if (it is BLASTMENUGameNode.StateNode) it.origin else null },
-            TargetSetLowerInitializer(LReward.isTarget),
-            TargetSetLowerInitializer(UReward.isTarget)
+        val initPrec = ExplPrec.of(ExprUtils.getVars(targetExpr))
+        val LReward = createBLASTMENUGameRewardFun<ExplState, StmtAction, ExplPrec>(
+            originalGoal = Goal.MAX,  abstractionGoal = Goal.MIN
         )
+        val UReward = createBLASTMENUGameRewardFun<ExplState, StmtAction, ExplPrec>(
+            originalGoal = Goal.MAX,  abstractionGoal = Goal.MAX
+        )
+        // WARNING: explicit type parameters in the instantiations below seem totally unnecessary,
+        //  but intellij and the kotlin compiler do not work without it
+        //  deducing the types might be too complex. At least the BLASTChecker type paremeters can be omitted this way
+        val checker = BLASTChecker(
+            fullInit, explInit, { s, p ->
+                MENUUnit(
+                    s, p, null,
+                    ExplOrd.getInstance(), explLts,
+                    explMenuTransFunc, ::explMaySatisfy,
+                )
+            },
+            targetExpr, ::explMaySatisfy,
+            { s, e -> XtaExplUtils.interpolate(s, e).toExpr() },
+            { v, e -> XtaExplUtils.interpolate(v, e).toExpr() },
+            { p, e -> p.join(ExplPrec.of(ExprUtils.getVars(e))) },
+            ::BlastMenuGame, VISolver<ExplMenuNode, ExplMenuAction>(1e-7),
+            LReward, UReward,
+            TargetSetLowerInitializer<ExplMenuNode, ExplMenuAction>(LReward.isTarget),
+            TargetSetLowerInitializer<ExplMenuNode, ExplMenuAction>(UReward.isTarget)
+        )
+        val (numResult, finalGame) = checker.check(
+            initPrec, Goal.MAX, 1e-6,
+            { game, L, U ->
+                println("Result: [${L[game.initialNode]}, ${U[game.initialNode]}]")
+                val (materGame, materMap) = game.materialize()
+                val invMatMap = materMap.entries.associate { it.value to it.key }
+                val LM = materMap.entries.associate { it.value to L[it.key]!! }
+                val UM = materMap.entries.associate { it.value to U[it.key]!! }
+                val color = materMap.entries.associate {
+                    it.value to if (LReward.isTarget(it.key)) Color.RED
+                    else if (UReward.isTarget(it.key)) Color.ORANGE
+                    else Color.WHITE
+                }
+                val viz = materGame.visualize(
+                    LM, UM, color
+                )
+                println(GraphvizWriter.getInstance().writeString(viz))
+            }
+        )
+        val viz = finalGame.materialize().materializedGame.visualize()
+        val dot = GraphvizWriter.getInstance().writeString(viz)
+        println("Final result: $numResult")
+        //println(dot)
+        return
         val root = checker.doInitialExploration(initPrec)
         val game = BlastMenuGame(root)
-        val viz = game.materialize().materializedGame.visualize()
-        val dot = GraphvizWriter.getInstance().writeString(viz)
-        println(dot)
+
     }
+
 
     @Test
     fun btExplExplorationTest() {
         simpleSetup()
 
-        val initPrec = ExplPrec.of(listOf(A))
+        val initPrec = ExplPrec.of(ExprUtils.getVars(targetExpr))
         val LReward = createBLASTBTGameRewardFunction<ExplState, StmtAction, ExplPrec>(Goal.MAX, Goal.MIN)
         val UReward = createBLASTBTGameRewardFunction<ExplState, StmtAction, ExplPrec>(Goal.MAX, Goal.MAX)
-        val checker = BLASTChecker<
-                BTUnit<ExplState, StmtAction, ExplPrec>,
-                ExplState, StmtAction, ExplPrec,
-                BLASTBTGameNode<ExplState, StmtAction, ExplPrec>,
-                BLASTBTGameAction<ExplState, StmtAction, ExplPrec>,
-                >(
+        val checker = BLASTChecker(
             fullInit, explInit,
             {s,p -> BTUnit(s, p,
                 ExplOrd.getInstance(), explLts,
@@ -160,16 +185,190 @@ class BLASTCheckerTest {
             {v, e -> XtaExplUtils.interpolate(v, e).toExpr()},
             {p, e -> p.join(ExplPrec.of(ExprUtils.getVars(e)))},
             ::BLASTBTGame,
-            VISolver(1e-7, false),
+            VISolver<ExplBTNode, ExplBTAction>(1e-7, false),
             LReward, UReward,
-            { if (it is BLASTBTGameNode.StateNode) it.origin else null },
-            TargetSetLowerInitializer(LReward.isTarget),
-            TargetSetLowerInitializer(UReward.isTarget)
+            TargetSetLowerInitializer<ExplBTNode, ExplBTAction>(LReward.isTarget),
+            TargetSetLowerInitializer<ExplBTNode, ExplBTAction>(UReward.isTarget)
         )
+
+        val (numResult, finalGame) = checker.check(
+            initPrec, Goal.MAX, 1e-6,
+          { game, L, U ->
+              println("Result: [${L[game.initialNode]}, ${U[game.initialNode]}]")
+              val (materGame, materMap) = game.materialize()
+              val invMatMap = materMap.entries.associate { it.value to it.key }
+              val LM = materMap.entries.associate { it.value to L[it.key]!! }
+              val UM = materMap.entries.associate { it.value to U[it.key]!! }
+              val color = materMap.entries.associate {
+                  it.value to if (LReward.isTarget(it.key)) Color.RED
+                  else if (UReward.isTarget(it.key)) Color.ORANGE
+                  else Color.WHITE
+              }
+              val viz = materGame.visualize(
+                  LM, UM, color
+              )
+              println(GraphvizWriter.getInstance().writeString(viz))
+          }
+        )
+        println("Final result: $numResult")
+
+        return
         val root = checker.doInitialExploration(initPrec)
         val game = BLASTBTGame(root)
         val viz = game.materialize().materializedGame.visualize()
         val dot = GraphvizWriter.getInstance().writeString(viz)
         println(dot)
+
+    }
+
+    private fun predRefute(s: PredState, e: Expr<BoolType>): Expr<BoolType> {
+        WithPushPop(itpSolver).use {
+            val A = itpSolver.createMarker()
+            val B = itpSolver.createMarker()
+            val pattern = itpSolver.createBinPattern(A, B)
+            itpSolver.add(A, PathUtils.unfold(s.toExpr(), 0))
+            itpSolver.add(B, PathUtils.unfold(e, 0))
+            itpSolver.check()
+            if(itpSolver.status.isSat) throw IllegalArgumentException("$s cannot refute $e")
+            val itp = itpSolver.getInterpolant(pattern).eval(A)
+            return PathUtils.foldin(itp, 0)
+        }
+    }
+
+    @Test
+    fun menuPredExplorationTest() {
+        simpleSetup()
+
+        val initPrec = PredPrec.of(targetExpr)
+        val LReward = createBLASTMENUGameRewardFun<PredState, StmtAction, PredPrec>(
+            originalGoal = Goal.MAX,  abstractionGoal = Goal.MIN
+        )
+        val UReward = createBLASTMENUGameRewardFun<PredState, StmtAction, PredPrec>(
+            originalGoal = Goal.MAX,  abstractionGoal = Goal.MAX
+        )
+        // WARNING: explicit type parameters in the instantiations below seem totally unnecessary,
+        //  but intellij and the kotlin compiler do not work without it
+        //  deducing the types might be too complex. At least the BLASTChecker type paremeters can be omitted this way
+        val checker = BLASTChecker(
+            fullInit, predInit, { s, p ->
+                MENUUnit(
+                    s, p, null,
+                    PredOrd.create(solver), predLts,
+                    predMenuTransFunc, predMaySatisfy(solver),
+                )
+            },
+            targetExpr, predMaySatisfy(solver),
+            ::predRefute,
+            { v, e -> XtaExplUtils.interpolate(v, e).toExpr() },
+            { p, e -> p.join(PredPrec.of(exprSplitter.apply(e))) },
+            ::BlastMenuGame, VISolver<PredMenuNode, PredMenuAction>(1e-7),
+            LReward, UReward,
+            TargetSetLowerInitializer<PredMenuNode, PredMenuAction>(LReward.isTarget),
+            TargetSetLowerInitializer<PredMenuNode, PredMenuAction>(UReward.isTarget)
+        )
+        val (numResult, finalGame) = checker.check(
+            initPrec, Goal.MAX, 1e-6,
+            { game, L, U ->
+                println("Result: [${L[game.initialNode]}, ${U[game.initialNode]}]")
+                val (materGame, materMap) = game.materialize()
+                val invMatMap = materMap.entries.associate { it.value to it.key }
+                val LM = materMap.entries.associate { it.value to L[it.key]!! }
+                val UM = materMap.entries.associate { it.value to U[it.key]!! }
+                val color = materMap.entries.associate {
+                    it.value to if(LReward.isTarget(it.key)) Color.RED
+                        else if(UReward.isTarget(it.key)) Color.ORANGE
+                        else Color.WHITE
+                }
+                val viz = materGame.visualize(
+                    LM, UM, color
+                )
+                //println(GraphvizWriter.getInstance().writeString(viz))
+            }
+        )
+        // TODO: for some reason, the [L, U] interval does not get monotonically tighter
+        val viz = finalGame.materialize().materializedGame.visualize()
+        val dot = GraphvizWriter.getInstance().writeString(viz)
+        println("Final result: $numResult")
+        //println(dot)
+        return
+        val root = checker.doInitialExploration(initPrec)
+        val game = BlastMenuGame(root)
+
+    }
+
+
+    @Test
+    fun btPredExplorationTest() {
+        simpleSetup()
+
+        val initPrec = PredPrec.of(targetExpr)
+        val LReward = createBLASTBTGameRewardFunction<PredState, StmtAction, PredPrec>(Goal.MAX, Goal.MIN)
+        val UReward = createBLASTBTGameRewardFunction<PredState, StmtAction, PredPrec>(Goal.MAX, Goal.MAX)
+        val checker = BLASTChecker(
+            fullInit, predInit,
+            {s,p -> BTUnit(s, p,
+                PredOrd.create(solver), predLts,
+                predBTTransFunc,// ::explMaySatisfy,
+            ) },
+            targetExpr,
+            predMaySatisfy(solver),
+            ::predRefute,
+            {v, e -> XtaExplUtils.interpolate(v, e).toExpr()},
+            {p, e -> p.join(PredPrec.of(exprSplitter.apply(e)))},
+            ::BLASTBTGame,
+            VISolver<PredBTNode, PredBTAction>(1e-7, false),
+            LReward, UReward,
+            TargetSetLowerInitializer<PredBTNode, PredBTAction>(LReward.isTarget),
+            TargetSetLowerInitializer<PredBTNode, PredBTAction>(UReward.isTarget)
+        )
+
+        val (numResult, finalGame) = checker.check(
+            initPrec, Goal.MAX, 1e-6,
+             { game, L, U ->
+                println("Result: [${L[game.initialNode]}, ${U[game.initialNode]}]")
+                val (materGame, materMap) = game.materialize()
+                val invMatMap = materMap.entries.associate { it.value to it.key }
+                val LM = materMap.entries.associate { it.value to L[it.key]!! }
+                val UM = materMap.entries.associate { it.value to U[it.key]!! }
+                val color = materMap.entries.associate {
+                    it.value to if(LReward.isTarget(it.key)) Color.RED
+                    else if(UReward.isTarget(it.key)) Color.ORANGE
+                    else Color.WHITE
+                }
+                val viz = materGame.visualize(
+                    LM, UM, color
+                )
+                //Assert.assertFalse(U[game.initialNode]!! < 0.972 || L[game.initialNode]!! > 0.973 )
+                //println(GraphvizWriter.getInstance().writeString(viz))
+            }, { game, L, U, numericPivot, refinementExpression ->
+                val (materGame, materMap) = game.materialize()
+                val invMatMap = materMap.entries.associate { it.value to it.key }
+                val LM = materMap.entries.associate { it.value to L[it.key]!! }
+                val UM = materMap.entries.associate { it.value to U[it.key]!! }
+                val color = materMap.entries.associate {
+                    it.value to if(LReward.isTarget(it.key)) Color.RED
+                    else if(UReward.isTarget(it.key)) Color.ORANGE
+                    else if(it.key == numericPivot) Color.YELLOW
+                    //else if(it.key.getOriginUnit() == logicalPivotUnit) Color.GREEN
+                    else Color.WHITE
+                }
+                val viz = materGame.visualize(
+                    LM, UM, color
+                )
+                println("Refinement expression: $refinementExpression")
+                println(GraphvizWriter.getInstance().writeString(viz))
+            }
+        )
+        // TODO: for some reason, the [L, U] interval does not get monotonically tighter,
+        //  and it is even unsound in some iterations, although the final one is correct
+        println("Final result: $numResult")
+
+        return
+        val root = checker.doInitialExploration(initPrec)
+        val game = BLASTBTGame(root)
+        val viz = game.materialize().materializedGame.visualize()
+        val dot = GraphvizWriter.getInstance().writeString(viz)
+        println(dot)
+
     }
 }

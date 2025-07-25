@@ -52,6 +52,7 @@ interface BLASTGameNode<
         LStrategy: Map<Self, GA>,
         U: Map<Self, Double>,
         UStrategy: Map<Self, GA>,
+        tolerance: Double,
     ): Expr<BoolType> = throw UnsupportedOperationException("Non-refinable node")
 }
 
@@ -103,30 +104,31 @@ class BLASTChecker<U : PARTUnit<U, D, A, P>, D : ExprState, A : StmtAction, P : 
     private fun processTargetUnit(targetUnit: U, rootUnit: U): UnitProcessingResult<U> {
         val stateNodeProjection = createFullStateNodeProjection(rootUnit)
         val targetTrace = stateNodeProjection[targetUnit]!!.getTraceFromRoot()
-        if (targetTrace.isEmpty()) {
-            TODO("corner case: target==root")
-        } else {
-            val res = concretizeOrRefine(targetTrace, targetExpr)
-            return UnitProcessingResult(
-                res.unmarkedNodes.map { it.origin as U }, //TODO: add U as a type param of the projected node
-                res.removedNodes.map { it.origin as U }
+        val res = concretizeOrRefine(targetTrace, targetExpr, stateNodeProjection[rootUnit]!!)
+        return UnitProcessingResult(
+            res.unmarkedNodes.map { it.origin as U }, //TODO: add U as a type param of the projected node
+            res.removedNodes.map { it.origin as U }
             )
-        }
         // TODO: should we constantly maintain a state node projection instead of building it from scratch here?
     }
 
 
-    private fun concretizeOrRefine(trace: List<StateNodeProjectionEdge<D, A, P>>, toBlockAtLast: Expr<BoolType>) = concretizeOrRefineOriginal(trace, toBlockAtLast)
+    private fun concretizeOrRefine(
+        trace: List<StateNodeProjectionEdge<D, A, P>>,
+        toBlockAtLast: Expr<BoolType>,
+        root: ProjectedStateNode<D, A, P>
+    ) = concretizeOrRefineOriginal(trace, toBlockAtLast, root)
 
     private fun keepSubtree(pivotNode: ProjectedStateNode<D, A, P>): Boolean = false
 
     data class RefinementResult<D : ExprState, A : StmtAction, P : Prec>(
         val concretizable: Boolean,
         val unmarkedNodes: List<ProjectedStateNode<D, A, P>>,
-        val removedNodes: List<ProjectedStateNode<D, A, P>>
+        val removedNodes: List<ProjectedStateNode<D, A, P>>,
+        val logicalPivotNode: ProjectedStateNode<D,A,P>?
     )
 
-    private fun concretizeOrRefineOriginal(trace: List<StateNodeProjectionEdge<D, A, P>>, toBlockAtLast: Expr<BoolType>): RefinementResult<D, A, P> {
+    private fun concretizeOrRefineOriginal(trace: List<StateNodeProjectionEdge<D, A, P>>, toBlockAtLast: Expr<BoolType>, root: ProjectedStateNode<D,A,P>): RefinementResult<D, A, P> {
         // Direct implementation based on the algorithm of Henzinger et. al.: Lazy abstraction
         var badRegion = toBlockAtLast
         for (i in trace.indices.reversed()) {
@@ -148,12 +150,12 @@ class BLASTChecker<U : PARTUnit<U, D, A, P>, D : ExprState, A : StmtAction, P : 
                     val newPrec = refinePrec(pivotNode.origin.getSupportPrecision(), refutation)
                     pivotNode.origin.refineSupportPrecision(newPrec)
                 }
-                return RefinementResult(false, unmarkedNodes, removedNodes)
+                return RefinementResult(false, unmarkedNodes, removedNodes, pivotNode)
             }
         }
         val eval = badRegion.eval(concreteInit)
         if (!(eval as BoolLitExpr).value) {
-            val pivotNode = trace.first().source // the root
+            val pivotNode = root
             val unmarkedNodes = arrayListOf<ProjectedStateNode<D, A, P>>()
             val removedNodes = arrayListOf<ProjectedStateNode<D, A, P>>()
             if (keepSubtree(pivotNode)) {
@@ -168,10 +170,10 @@ class BLASTChecker<U : PARTUnit<U, D, A, P>, D : ExprState, A : StmtAction, P : 
                 pivotNode.origin.refineState(getInitState(newPrec))
             }
             // maybe a reinit function would make more sense later
-            return RefinementResult(false, unmarkedNodes, removedNodes)
+            return RefinementResult(false, unmarkedNodes, removedNodes, pivotNode)
         }
         // The trace is concretizable
-        return RefinementResult(true, listOf(), listOf())
+        return RefinementResult(true, listOf(), listOf(), null)
     }
 
     private fun explore(rootUnit: U, reachedSet: MutableCollection<U>, q: ArrayDeque<U>) {
@@ -214,8 +216,15 @@ class BLASTChecker<U : PARTUnit<U, D, A, P>, D : ExprState, A : StmtAction, P : 
     }
 
     fun check(
-        initPrec: P, goal: Goal, threshold: Double
-    ): Double {
+        initPrec: P, goal: Goal, threshold: Double,
+        logAnalysis: (currGame: StochasticGame<GameNode, GameAction>,
+                      L: Map<GameNode, Double>, U: Map<GameNode, Double>) -> Unit = { _,_,_ -> },
+        logNumericRefinement: (currGame: StochasticGame<GameNode, GameAction>,
+                               L: Map<GameNode, Double>, U: Map<GameNode, Double>,
+                               numericPivot: GameNode, refinementExpression: Expr<BoolType>,
+                               //logicalPivotUnit: U
+                ) -> Unit = { _,_,_,_,_ -> }
+    ): Pair<Double, StochasticGame<GameNode, GameAction>> {
         val initState = getInitState(initPrec)
         val root = createUnit(initState, initPrec)
         val q = ArrayDeque<U>()
@@ -239,20 +248,25 @@ class BLASTChecker<U : PARTUnit<U, D, A, P>, D : ExprState, A : StmtAction, P : 
             )
             val (L, LStrat) = gameSolver.solveWithStrategy(lowerAnalysisTask, lowerGameInitilizer)
             val (U, UStrat) = gameSolver.solveWithStrategy(upperAnalysisTask, upperGameInitilizer)
+            logAnalysis(game, L, U)
             if (U[game.initialNode]!! - L[game.initialNode]!! < threshold)
-                return (L[game.initialNode]!! + U[game.initialNode]!!) / 2
+                return (L[game.initialNode]!! + U[game.initialNode]!!) / 2 to game
 
             // Numeric refinement with propagation
             val projection = createFullStateNodeProjection(root)
-            val pivotNode: GameNode = selectNumericPivotNode(L, LStrat, U, UStrat)
+            val pivotNode: GameNode = selectNumericPivotNode(game, L, LStrat, U, UStrat, threshold)
             val pivotUnit: U = pivotNode.getOriginUnit()
                 ?: throw RuntimeException("Numeric pivot node must directly correspond to a unit")
             val trace = projection[pivotUnit]!!.getTraceFromRoot()
-            val refinementExpr = pivotNode.computeNumericRefinement(L, LStrat, U, UStrat)
-            var refinementResult = concretizeOrRefine(trace, refinementExpr)
+            val refinementExpr = pivotNode.computeNumericRefinement(L, LStrat, U, UStrat, threshold)
+            logNumericRefinement(
+                game, L, U, pivotNode, refinementExpr, //refinementResult.logicalPivotNode!!.origin as U
+            )
+            var refinementResult = concretizeOrRefine(trace, refinementExpr, projection[root]!!)
             if(refinementResult.concretizable) // Propagating both of them simultaneously might be a bit cheaper
-                refinementResult = concretizeOrRefine(trace, Not(refinementExpr))
+                refinementResult = concretizeOrRefine(trace, Not(refinementExpr),  projection[root]!!)
             val removedUnits = refinementResult.removedNodes.map { it.origin }.toSet()
+
             q.addAll(refinementResult.unmarkedNodes.map { it.origin as U })
             q.removeAll(removedUnits)
             reachedSet.removeAll(removedUnits)
@@ -260,12 +274,17 @@ class BLASTChecker<U : PARTUnit<U, D, A, P>, D : ExprState, A : StmtAction, P : 
     }
 
     fun selectNumericPivotNode(
+        game: StochasticGame<GameNode, GameAction>,
         L: Map<GameNode, Double>,
         LStrategy: Map<GameNode, GameAction>,
         U: Map<GameNode, Double>,
         UStrategy: Map<GameNode, GameAction>,
+        tolerance: Double
     ): GameNode {
-        TODO("these will likely not be enough, the intermediates might be needed as well")
+        val nodeToRefine = game.getAllNodes()
+            .filter { it.isRefinable(L, LStrategy, U, UStrategy, tolerance) }
+            .maxByOrNull { U[it]!!-L[it]!! } ?: throw IllegalArgumentException("No refinable node found")
+        return nodeToRefine
     }
 }
 

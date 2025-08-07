@@ -1,6 +1,7 @@
 package hu.bme.mit.theta.prob.analysis.lazy
 
 import hu.bme.mit.theta.core.model.ImmutableValuation
+import hu.bme.mit.theta.prob.analysis.Algorithm
 import hu.bme.mit.theta.prob.analysis.jani.SMDPProperty
 import hu.bme.mit.theta.prob.analysis.jani.extractSMDPReachabilityTask
 import hu.bme.mit.theta.prob.analysis.jani.model.Model

@@ -7,15 +7,13 @@ import hu.bme.mit.theta.analysis.expl.ExplStmtTransFunc
 import hu.bme.mit.theta.analysis.expr.ExprState
 import hu.bme.mit.theta.analysis.pred.*
 import hu.bme.mit.theta.analysis.pred.ExprSplitters.ExprSplitter
+import hu.bme.mit.theta.prob.analysis.Algorithm
+import hu.bme.mit.theta.prob.analysis.Algorithm.*
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.prob.analysis.jani.*
-import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.Algorithm.*
 import hu.bme.mit.theta.probabilistic.FiniteDistribution
 import hu.bme.mit.theta.probabilistic.StochasticGame
-import hu.bme.mit.theta.probabilistic.gamesolvers.diffBasedSelection
-import hu.bme.mit.theta.probabilistic.gamesolvers.randomSelection
-import hu.bme.mit.theta.probabilistic.gamesolvers.roundRobinSelection
-import hu.bme.mit.theta.probabilistic.gamesolvers.weightedRandomSelection
+import hu.bme.mit.theta.probabilistic.gamesolvers.*
 import hu.bme.mit.theta.solver.ItpSolver
 import hu.bme.mit.theta.solver.Solver
 import hu.bme.mit.theta.solver.UCSolver
@@ -50,10 +48,6 @@ class SMDPLazyChecker(
         RANDOM,
         ROUND_ROBIN,
         WEIGHTED_RANDOM;
-    }
-
-    enum class Algorithm {
-        BRTDP, VI, BVI
     }
 
     fun <T: ExprState> getSuccessorSelection() = when (brtdpStrategy) {

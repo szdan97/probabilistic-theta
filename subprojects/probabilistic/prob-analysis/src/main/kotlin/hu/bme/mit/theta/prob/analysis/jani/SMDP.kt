@@ -1,6 +1,7 @@
 package hu.bme.mit.theta.prob.analysis.jani
 
 import hu.bme.mit.theta.analysis.InitFunc
+import hu.bme.mit.theta.analysis.PartialOrd
 import hu.bme.mit.theta.analysis.Prec
 import hu.bme.mit.theta.analysis.expr.ExprState
 import hu.bme.mit.theta.analysis.expr.StmtAction
@@ -325,6 +326,11 @@ fun ProbabilisticCommand<SMDPCommandAction>.extendWith(
     }
 )
 
+class SmdpOrd<D: ExprState>(val innerOrd: PartialOrd<D>):
+PartialOrd<SMDPState<D>>{
+    override fun isLeq(state1: SMDPState<D>, state2: SMDPState<D>) =
+        state1.locs == state2.locs && innerOrd.isLeq(state1.domainState, state2.domainState)
+}
 
 class SmdpCommandLts<D: ExprState>(val smdp: SMDP): ProbabilisticCommandLTS<SMDPState<D>, SMDPCommandAction> {
     private val cache = hashMapOf<

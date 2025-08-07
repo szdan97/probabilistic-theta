@@ -48,8 +48,8 @@ class ProjectedStateNode<D : ExprState, A : StmtAction, P : Prec>(
             successor.removeSubtreeHelper(removedNodes = removedNodes, unmarkedNodes = unmarkedNodes)
             removedNodes.add(successor)
             unmarkedNodes.remove(successor)
-            successor.coveringNode?.coveredNodes?.remove(successor)
-            successor.coveredNodes.forEach {
+            successor.removeCover()
+            successor.coveredNodes.toList().forEach {
                 it.removeCover()
                 if(it !in removedNodes) unmarkedNodes.add(it)
             }
@@ -62,6 +62,7 @@ class ProjectedStateNode<D : ExprState, A : StmtAction, P : Prec>(
     }
 
     fun removeCover() {
+        coveringNode?.coveredNodes?.remove(this)
         coveringNode = null
     }
 

@@ -15,6 +15,7 @@ import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.core.type.inttype.IntExprs.*
 import hu.bme.mit.theta.core.utils.ExprUtils
 import hu.bme.mit.theta.core.utils.PathUtils
+import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.prob.analysis.besttransformer.BasicBestTransformerTransFunc
 import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerTransFunc
 import hu.bme.mit.theta.prob.analysis.besttransformer.explGetGuardSatisfactionConfigs
@@ -28,6 +29,7 @@ import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.TargetSetLowerIni
 import hu.bme.mit.theta.solver.utils.WithPushPop
 import hu.bme.mit.theta.solver.z3.Z3SolverFactory
 import hu.bme.mit.theta.xta.analysis.expl.XtaExplUtils
+import org.junit.Assert
 import org.junit.Test
 import java.awt.Color
 
@@ -65,6 +67,7 @@ class BLASTCheckerTest {
     lateinit var predBTTransFunc: BestTransformerTransFunc<PredState, StmtAction, PredPrec>
 
     val exprSplitter = ExprSplitters.atoms()
+    lateinit var commands: List<ProbabilisticCommand<StmtAction>>
 
     private fun simpleSetup() {
         // [A < 2 && B < 3]:
@@ -72,7 +75,7 @@ class BLASTCheckerTest {
         // - 0.2: B:=B+1
         // [C < 3]:
         // - 1.0: C:=C+1
-        val commands = listOf(
+        commands = listOf(
             And(Lt(A.ref, Int(2)), Lt(B.ref, Int(3))).then(
                 0.8 to Assign(A, Add(A.ref, Int(1))),
                 0.2 to Assign(B, Add(B.ref, Int(1)))
@@ -152,7 +155,7 @@ class BLASTCheckerTest {
                 val viz = materGame.visualize(
                     LM, UM, color
                 )
-                println(GraphvizWriter.getInstance().writeString(viz))
+                //println(GraphvizWriter.getInstance().writeString(viz))
             }
         )
         val viz = finalGame.materialize().materializedGame.visualize()
@@ -207,7 +210,7 @@ class BLASTCheckerTest {
               val viz = materGame.visualize(
                   LM, UM, color
               )
-              println(GraphvizWriter.getInstance().writeString(viz))
+              //println(GraphvizWriter.getInstance().writeString(viz))
           }
         )
         println("Final result: $numResult")
@@ -279,6 +282,19 @@ class BLASTCheckerTest {
                         else if(UReward.isTarget(it.key)) Color.ORANGE
                         else Color.WHITE
                 }
+                Assert.assertFalse(U[game.initialNode]!! < 0.972 || L[game.initialNode]!! > 0.973 )
+                require(
+                    game.getAllNodes().all { node ->
+                        node.getOriginUnit()?.let { unit ->
+                            if(unit.isCovered() || unit.mustBeTarget()) return@all true
+                            if(unit.intermediateNodes.keys.toSet() != commands.filter {
+                                    predMaySatisfy(unit.getState(), it.guard, solver)
+                                }.toSet()) return@all false
+                            return@all true
+                            // TODO: check that the next results overapproximate the exact next
+                        } ?: true
+                    }
+                )
                 val viz = materGame.visualize(
                     LM, UM, color
                 )
@@ -355,8 +371,9 @@ class BLASTCheckerTest {
                 val viz = materGame.visualize(
                     LM, UM, color
                 )
+                println("Numeric pivot: $numericPivot")
                 println("Refinement expression: $refinementExpression")
-                println(GraphvizWriter.getInstance().writeString(viz))
+                //println(GraphvizWriter.getInstance().writeString(viz))
             }
         )
         // TODO: for some reason, the [L, U] interval does not get monotonically tighter,

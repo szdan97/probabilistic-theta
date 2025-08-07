@@ -22,22 +22,23 @@ import hu.bme.mit.theta.analysis.pred.*
 import hu.bme.mit.theta.analysis.pred.ExprSplitters.ExprSplitter
 import hu.bme.mit.theta.common.visualization.writer.GraphvizWriter
 import hu.bme.mit.theta.core.model.ImmutableValuation
+import hu.bme.mit.theta.core.model.Valuation
 import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.booltype.BoolExprs
 import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.core.utils.ExprUtils
+import hu.bme.mit.theta.core.utils.PathUtils
+import hu.bme.mit.theta.prob.analysis.Algorithm
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.prob.analysis.besttransformer.*
-import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.BestTransformerGameAction
-import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.BestTransformerGameNode
 import hu.bme.mit.theta.prob.analysis.besttransformer.PivotSelectionStrategy
+import hu.bme.mit.theta.prob.analysis.blast2.SMDPBLASTCheckerConfigs
 import hu.bme.mit.theta.prob.analysis.direct.SMDPDirectChecker
 import hu.bme.mit.theta.prob.analysis.direct.SMDPDirectCheckerGame
 import hu.bme.mit.theta.prob.analysis.jani.*
 import hu.bme.mit.theta.prob.analysis.jani.model.Model
 import hu.bme.mit.theta.prob.analysis.jani.model.json.JaniModelMapper
 import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker
-import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.Algorithm
 import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.BRTDPStrategy.*
 import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.ExplLinkedTransFunc
 import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.LinkedTransFunc
@@ -52,6 +53,7 @@ import hu.bme.mit.theta.probabilistic.gamesolvers.*
 import hu.bme.mit.theta.solver.ItpSolver
 import hu.bme.mit.theta.solver.Solver
 import hu.bme.mit.theta.solver.UCSolver
+import hu.bme.mit.theta.solver.utils.WithPushPop
 import hu.bme.mit.theta.solver.z3.Z3SolverFactory
 import kotlin.io.path.Path
 
@@ -276,14 +278,14 @@ class JaniCLI : CliktCommand() {
                     {
                         this.join(PredPrec.of(exprSplitter.apply(it)))
                     },
-                    when(algorithm) {
-                        Algorithm.BVI -> SGBVISolver(threshold)
-                        Algorithm.VI -> VISolver(threshold)
-                        Algorithm.BRTDP -> TODO()
-                    },
+
                     eliminateSpurious,
                     traceChecker,
-                    ItpRefToPredPrec(exprSplitter)
+                    ItpRefToPredPrec(exprSplitter),
+                    abstraction == AbstractionMethod.MENU_BLAST,
+                    { p: PredPrec, e: Expr<BoolType> -> p.join(PredPrec.of(exprSplitter.apply(e))) },
+                    PredOrd.create(solver),
+                    SMDPBLASTCheckerConfigs.smdpPredRefute(itpSolver)
                 )
             }
             EXPL -> menuHelper(
@@ -302,17 +304,43 @@ class JaniCLI : CliktCommand() {
                 smdpMustSatisfy(::explMustSatisfy),
                 ExplPrec.of(ExprUtils.getVars(task.targetExpr)),
                 {this.join(ExplPrec.of(ExprUtils.getVars(it)))},
-                when(algorithm) {
-                    Algorithm.BVI -> SGBVISolver(threshold)
-                    Algorithm.VI -> VISolver(threshold)
-                    Algorithm.BRTDP -> TODO()
-                },
                 eliminateSpurious,
                 traceChecker,
-                ItpRefToExplPrec()
+                ItpRefToExplPrec(),
+                abstraction == AbstractionMethod.MENU_BLAST,
+                { p: ExplPrec, e: Expr<BoolType> -> p.join(ExplPrec.of(ExprUtils.getVars(e))) },
+                ExplOrd.getInstance(),
+                SMDPBLASTCheckerConfigs::smdpExplRefute
             )
             NONE -> throw IllegalArgumentException("Domain must be selected for menu game abstraction")
         }
+    }
+
+    fun <N, A> createMDPSolver(algorithm: Algorithm, tolerance: Double): StochasticGameSolver<N, A> {
+        return when (algorithm) {
+            Algorithm.BRTDP -> TODO("Not yet implemented")
+            Algorithm.VI -> VISolver<N, A>(tolerance)
+            Algorithm.BVI -> MDPBVISolver<N, A>(tolerance)
+        }
+    }
+
+    fun <N, A> createSGSolver(algorithm: Algorithm, tolerance: Double): StochasticGameSolver<N, A> {
+        return when (algorithm) {
+            Algorithm.BRTDP -> TODO("Not yet implemented")
+            Algorithm.VI -> VISolver<N, A>(tolerance)
+            Algorithm.BVI -> SGBVISolver<N, A>(tolerance)
+        }
+    }
+
+    fun getFullInit(model: SMDP, solver: Solver): Valuation {
+        val fullInit = model.getFullInitExpr().let { expr ->
+            WithPushPop(solver).use {
+                solver.add(PathUtils.unfold(expr, 0))
+                solver.check()
+                solver.model
+            }
+        }
+        return fullInit
     }
 
     private fun <D: ExprState, P: Prec, R: Refutation> menuHelper(
@@ -328,10 +356,13 @@ class JaniCLI : CliktCommand() {
         mustSatisfy: (SMDPState<D>, Expr<BoolType>) -> Boolean,
         initPrec: P,
         extend: P.(basedOn: Expr<BoolType>) -> P,
-        quantSolver: StochasticGameSolver<MenuGameNode<SMDPState<D>, SMDPCommandAction>, MenuGameAction<SMDPState<D>, SMDPCommandAction>>,
         eliminateSpurious: Boolean,
         traceChecker: ExprTraceChecker<R>,
-        refToPrec: RefutationToPrec<P, R>
+        refToPrec: RefutationToPrec<P, R>,
+        useBLAST: Boolean = false,
+        refinePrec: (P, Expr<BoolType>) -> P,
+        domainPartialOrd: PartialOrd<D>,
+        refute: (SMDPState<D>, Expr<BoolType>) -> Expr<BoolType>
     ): Double {
         val lts = SmdpCommandLts<D>(model)
         val initFunc = SmdpInitFunc<D, P>(domainInitFunc, model)
@@ -355,12 +386,24 @@ class JaniCLI : CliktCommand() {
             refToPrec
         )
 
-        val checker = MenuGameCegarChecker(
-            abstractor,
-            refiner,
-            quantSolver
-        )
-        return checker.check(initPrec, task.goal, threshold).finalUpperInitValue
+
+        if(useBLAST) {
+            val smdpOrd = SmdpOrd(domainPartialOrd)
+            val checker = SMDPBLASTCheckerConfigs.MENU_GENERIC(
+                task.goal,  getFullInit(model, solver), initFunc, smdpOrd, lts,
+                transFunc, maySatisfy, task.targetExpr, refute,
+                refinePrec, createSGSolver(algorithm, threshold)
+            )
+            return checker.check(initPrec, task.goal, threshold).first
+        }
+        else {
+            val checker = MenuGameCegarChecker(
+                abstractor,
+                refiner,
+                createSGSolver(algorithm, threshold)
+            )
+            return checker.check(initPrec, task.goal, threshold).finalUpperInitValue
+        }
     }
 
     private fun bestTransformer(
@@ -388,15 +431,14 @@ class JaniCLI : CliktCommand() {
                     smdpMustSatisfy(predMustSatisfy(solver)),
                     PredPrec.of(task.targetExpr),
                     { this.join(PredPrec.of(exprSplitter.apply(it))) },
-                    when(algorithm) {
-                        Algorithm.BVI -> SGBVISolver(threshold)
-                        Algorithm.VI -> VISolver(threshold)
-                        Algorithm.BRTDP -> TODO()
-                    },
                     ReachableMostUncertain(),
                     eliminateSpurious,
                     traceChecker,
-                    ItpRefToPredPrec(exprSplitter)
+                    ItpRefToPredPrec(exprSplitter),
+                    abstraction == AbstractionMethod.MENU_BLAST,
+                    { p: PredPrec, e: Expr<BoolType> -> p.join(PredPrec.of(exprSplitter.apply(e))) },
+                    PredOrd.create(solver),
+                    SMDPBLASTCheckerConfigs.smdpPredRefute(itpSolver)
                 )
             }
             EXPL -> bestTransformerHelper(
@@ -411,20 +453,18 @@ class JaniCLI : CliktCommand() {
                 smdpMustSatisfy(::explMustSatisfy),
                 ExplPrec.of(ExprUtils.getVars(task.targetExpr)),
                 {this.join(ExplPrec.of(ExprUtils.getVars(it)))},
-                when(algorithm) {
-                    Algorithm.BVI -> SGBVISolver(threshold)
-                    Algorithm.VI -> VISolver(threshold)
-                    Algorithm.BRTDP -> TODO()
-                },
                 ReachableMostUncertain(),
                 eliminateSpurious,
                 traceChecker,
-                ItpRefToExplPrec()
+                ItpRefToExplPrec(),
+                abstraction == AbstractionMethod.MENU_BLAST,
+                { p: ExplPrec, e: Expr<BoolType> -> p.join(ExplPrec.of(ExprUtils.getVars(e))) },
+                ExplOrd.getInstance(),
+                SMDPBLASTCheckerConfigs::smdpExplRefute
             )
 
             NONE -> throw IllegalArgumentException("Domain must be selected for best transformer game abstraction")
         }
-
     }
 
     private fun <D: ExprState, P: Prec, R: Refutation> bestTransformerHelper(
@@ -440,11 +480,14 @@ class JaniCLI : CliktCommand() {
         mustSatisfy: (SMDPState<D>, Expr<BoolType>) -> Boolean,
         initPrec: P,
         extend: P.(basedOn: Expr<BoolType>) -> P,
-        quantSolver: StochasticGameSolver<BestTransformerGameNode<SMDPState<D>, SMDPCommandAction>, BestTransformerGameAction<SMDPState<D>, SMDPCommandAction>>,
         pivotSelectionStrategy: PivotSelectionStrategy,
         eliminateSpurious: Boolean,
         traceChecker: ExprTraceChecker<R>,
-        refToPrec: RefutationToPrec<P, R>
+        refToPrec: RefutationToPrec<P, R>,
+        useBLAST: Boolean = false,
+        refinePrec: (P, Expr<BoolType>) -> P,
+        domainPartialOrd: PartialOrd<D>,
+        refute: (SMDPState<D>, Expr<BoolType>) -> Expr<BoolType>
     ): Double {
         val lts = SmdpCommandLts<D>(model)
         val initFunc = SmdpInitFunc<D, P>(domainInitFunc, model)
@@ -468,12 +511,23 @@ class JaniCLI : CliktCommand() {
             refToPrec
         )
 
-        val checker = BestTransformerCegarChecker(
-            abstractor,
-            refiner,
-            quantSolver
-        )
-        return checker.check(initPrec, task.goal, threshold).finalUpperInitValue
+        if(useBLAST) {
+            val smdpOrd = SmdpOrd(domainPartialOrd)
+            val checker = SMDPBLASTCheckerConfigs.BT_GENERIC(
+                task.goal,  getFullInit(model, solver), initFunc, smdpOrd, lts,
+                transFunc, maySatisfy, task.targetExpr, refute,
+                refinePrec, createSGSolver(algorithm, threshold)
+            )
+            return checker.check(initPrec, task.goal, threshold).first
+        }
+        else {
+            val checker = BestTransformerCegarChecker(
+                abstractor,
+                refiner,
+                createSGSolver(algorithm, threshold)
+            )
+            return checker.check(initPrec, task.goal, threshold).finalUpperInitValue
+        }
     }
 
     private fun lazy(

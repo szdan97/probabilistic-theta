@@ -40,7 +40,7 @@ interface PARTUnit<Self : PARTUnit<Self, D, A, P>, D : ExprState, A : StmtAction
     fun getCoveredUnits(): List<Self>
     fun isCovered() = getCoverer() != null
     fun ifCovered(then: (Self) -> Unit) = getCoverer()?.let(then)
-    fun coverWith(coveringNode: Self)
+    fun coverWith(coveringUnit: Self)
     fun removeCover()
 
     fun markAsMayBeTarget()
@@ -53,5 +53,7 @@ interface PARTUnit<Self : PARTUnit<Self, D, A, P>, D : ExprState, A : StmtAction
     fun removeSubtree(): RemovedAndUnlabeledNodes<Self>
 
     fun stateNodeProjection(): ProjectedStateNode<D, A, P> = ProjectedStateNode(this)
+
+    fun getId(): Int
 }
 

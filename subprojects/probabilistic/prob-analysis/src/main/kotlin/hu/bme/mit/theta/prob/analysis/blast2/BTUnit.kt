@@ -52,6 +52,7 @@ class BTUnit<D : ExprState, A : StmtAction, P : Prec>(
             )
             intermediateNodes.add(newNode)
         }
+        fullyExpanded = true
         return successorUnits
     }
 

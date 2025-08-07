@@ -16,9 +16,13 @@ abstract class BasicUnit<Self : BasicUnit<Self, D, A, P>, D : ExprState, A : Stm
     protected val coveredUnits = arrayListOf<Self>()
     protected var mayTarget = false
     protected var mustTarget = false
+    companion object { var nextId = 0}
+    private val _id = nextId++
+
+    override fun getId() = _id
 
     override fun toString(): String {
-        return "Unit(${getState()} | ${getSupportPrecision()})"
+        return "Unit[$_id](${getState()} | ${getSupportPrecision()})"
     }
 
     override fun getState(): D = stateLabel
@@ -26,7 +30,9 @@ abstract class BasicUnit<Self : BasicUnit<Self, D, A, P>, D : ExprState, A : Stm
     override fun isExpanded() = fullyExpanded
 
     override fun canCover(unitToCover: Self) =
-        unitToCover != this && !this.isCovered() && partialOrder.isLeq(unitToCover.getState(), this.getState())
+        unitToCover != this && !this.isCovered() &&
+//                unitToCover.getState() == this.getState() && // TODO: remove
+                partialOrder.isLeq(unitToCover.getState(), this.getState())
 
     override fun refineSupportPrecision(newPrecision: P) {
         supportPrec = newPrecision
@@ -36,11 +42,14 @@ abstract class BasicUnit<Self : BasicUnit<Self, D, A, P>, D : ExprState, A : Stm
 
     override fun getCoveredUnits(): List<Self> = coveredUnits
 
-    override fun coverWith(coveringNode: Self) {
-        coveringUnit = coveringNode
+    override fun coverWith(coveringUnit: Self) {
+        this.coveringUnit = coveringUnit
+        //TODO: the cast is ugly, but even self-bounded types seem to not be enough here
+        coveringUnit.coveredUnits.add(this as Self)
     }
 
     override fun removeCover() {
+        coveringUnit?.coveredUnits?.remove(this)
         coveringUnit = null
     }
 
@@ -73,10 +82,10 @@ abstract class BasicUnit<Self : BasicUnit<Self, D, A, P>, D : ExprState, A : Stm
             successor.removeSubtreeHelper(removedUnits = removedUnits, unmarkedUnits = unmarkedUnits)
             removedUnits.add(successor)
             unmarkedUnits.remove(successor)
-            successor.coveringUnit?.coveredUnits?.remove(successor)
-            successor.coveredUnits.forEach {
+            successor.removeCover()
+            successor.coveredUnits.toList().forEach {
                 it.removeCover()
-                unmarkedUnits.add(it)
+                if(it !in removedUnits) unmarkedUnits.add(it)
             }
         }
         clearIntermediateNodes()

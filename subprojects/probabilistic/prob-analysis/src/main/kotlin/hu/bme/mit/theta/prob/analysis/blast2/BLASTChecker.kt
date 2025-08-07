@@ -105,6 +105,8 @@ class BLASTChecker<U : PARTUnit<U, D, A, P>, D : ExprState, A : StmtAction, P : 
         val stateNodeProjection = createFullStateNodeProjection(rootUnit)
         val targetTrace = stateNodeProjection[targetUnit]!!.getTraceFromRoot()
         val res = concretizeOrRefine(targetTrace, targetExpr, stateNodeProjection[rootUnit]!!)
+        require(res.concretizable || res.removedNodes.isNotEmpty())
+        //if(!res.concretizable) println("Logical pivot: ${res.logicalPivotNode!!.origin.getId()}")
         return UnitProcessingResult(
             res.unmarkedNodes.map { it.origin as U }, //TODO: add U as a type param of the projected node
             res.removedNodes.map { it.origin as U }
@@ -188,13 +190,21 @@ class BLASTChecker<U : PARTUnit<U, D, A, P>, D : ExprState, A : StmtAction, P : 
                 reachedSet.removeAll(removedUnits)
                 q.removeAll(removedUnits)
                 q.addAll(processResult.unmarkedUnits.toSet())
+                //println("Logical Removed: ${removedUnits.map { it.getId() }}")
+                //println("Added to q: ${processResult.unmarkedUnits.toSet().map { it.getId() }}")
+                require(rootUnitToGame(rootUnit).getAllNodes().mapNotNull { it.getOriginUnit() }.toSet() == reachedSet.toSet())
                 // TODO: should target checking and logical refinement be performed when processing a node or when it is found?
             } else {
                 processNonTargetUnit(currUnit, reachedSet)
-                q.addAll(currUnit.getSuccessorUnits().map { it.second })
-                reachedSet.addAll(currUnit.getSuccessorUnits().map { it.second })
+                val toAdd = currUnit.getSuccessorUnits().map { it.second }
+                q.addAll(toAdd)
+                reachedSet.addAll(toAdd)
+                //println("Added to reached and q: ${toAdd.map { it.getId() }}")
+                require(rootUnitToGame(rootUnit).getAllNodes().mapNotNull { it.getOriginUnit() }.toSet() == reachedSet.toSet())
+
             }
         }
+        require(rootUnitToGame(rootUnit).getAllNodes().all { it.getOriginUnit()?.let { it.isComplete() || it.mustBeTarget() } ?: true })
     }
 
     fun getInitState(prec: P): D {
@@ -229,9 +239,9 @@ class BLASTChecker<U : PARTUnit<U, D, A, P>, D : ExprState, A : StmtAction, P : 
         val root = createUnit(initState, initPrec)
         val q = ArrayDeque<U>()
         q.add(root)
+        val reachedSet = hashSetOf(root)
         while (true) {
             // Exploration + Logical refinement
-            val reachedSet = hashSetOf(root)
             explore(root, reachedSet, q)
 
             // Numeric Analysis
@@ -267,9 +277,14 @@ class BLASTChecker<U : PARTUnit<U, D, A, P>, D : ExprState, A : StmtAction, P : 
                 refinementResult = concretizeOrRefine(trace, Not(refinementExpr),  projection[root]!!)
             val removedUnits = refinementResult.removedNodes.map { it.origin }.toSet()
 
-            q.addAll(refinementResult.unmarkedNodes.map { it.origin as U })
+            val toAdd = refinementResult.unmarkedNodes.map { it.origin as U }
+            q.addAll(toAdd)
             q.removeAll(removedUnits)
             reachedSet.removeAll(removedUnits)
+            //println("Numeric pivot: ${pivotUnit.getId()}")
+            //println("Logical pivot: ${refinementResult.logicalPivotNode!!.origin.getId()}")
+            //println("Added to q: ${toAdd.map { it.getId() }}")
+            //println("Numeric Removed: ${removedUnits.map { it.getId() }}")
         }
     }
 

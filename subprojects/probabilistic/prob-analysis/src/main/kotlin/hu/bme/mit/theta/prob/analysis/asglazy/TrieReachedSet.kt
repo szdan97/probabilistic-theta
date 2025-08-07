@@ -1,4 +1,4 @@
-package hu.bme.mit.theta.prob.analysis.lazy
+package hu.bme.mit.theta.prob.analysis.asglazy
 
 class TrieReachedSet<Data, Key>(
     val extractKeys: (Data) -> List<Key?>,

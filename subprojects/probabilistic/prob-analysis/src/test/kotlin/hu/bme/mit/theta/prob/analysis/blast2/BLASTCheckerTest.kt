@@ -163,9 +163,6 @@ class BLASTCheckerTest {
         println("Final result: $numResult")
         //println(dot)
         return
-        val root = checker.doInitialExploration(initPrec)
-        val game = BlastMenuGame(root)
-
     }
 
 
@@ -214,14 +211,6 @@ class BLASTCheckerTest {
           }
         )
         println("Final result: $numResult")
-
-        return
-        val root = checker.doInitialExploration(initPrec)
-        val game = BLASTBTGame(root)
-        val viz = game.materialize().materializedGame.visualize()
-        val dot = GraphvizWriter.getInstance().writeString(viz)
-        println(dot)
-
     }
 
     private fun predRefute(s: PredState, e: Expr<BoolType>): Expr<BoolType> {
@@ -306,10 +295,6 @@ class BLASTCheckerTest {
         val dot = GraphvizWriter.getInstance().writeString(viz)
         println("Final result: $numResult")
         //println(dot)
-        return
-        val root = checker.doInitialExploration(initPrec)
-        val game = BlastMenuGame(root)
-
     }
 
 
@@ -379,13 +364,5 @@ class BLASTCheckerTest {
         // TODO: for some reason, the [L, U] interval does not get monotonically tighter,
         //  and it is even unsound in some iterations, although the final one is correct
         println("Final result: $numResult")
-
-        return
-        val root = checker.doInitialExploration(initPrec)
-        val game = BLASTBTGame(root)
-        val viz = game.materialize().materializedGame.visualize()
-        val dot = GraphvizWriter.getInstance().writeString(viz)
-        println(dot)
-
     }
 }

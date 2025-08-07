@@ -1,4 +1,4 @@
-package hu.bme.mit.theta.prob.analysis.lazy
+package hu.bme.mit.theta.prob.analysis.asglazy
 
 import hu.bme.mit.theta.core.model.ImmutableValuation
 import hu.bme.mit.theta.prob.analysis.Algorithm
@@ -7,7 +7,7 @@ import hu.bme.mit.theta.prob.analysis.jani.extractSMDPReachabilityTask
 import hu.bme.mit.theta.prob.analysis.jani.model.Model
 import hu.bme.mit.theta.prob.analysis.jani.model.json.JaniModelMapper
 import hu.bme.mit.theta.prob.analysis.jani.toSMDP
-import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.BRTDPStrategy
+import hu.bme.mit.theta.prob.analysis.asglazy.SMDPLazyChecker.BRTDPStrategy
 import hu.bme.mit.theta.probabilistic.Goal
 import hu.bme.mit.theta.solver.z3.Z3SolverFactory
 import org.junit.Ignore
@@ -20,7 +20,7 @@ class JaniLazyTest {
 
     @Test
     fun runOne() {
-        val f = Paths.get("F:\\egyetem\\dipterv\\qcomp\\benchmarks\\mdp\\consensus\\consensus.2.jani")
+        val f = Paths.get("F:\\egyetem\\dipterv\\qcomp\\benchmarks\\mdp\\csma\\csma.2-2.jani")
         println(f.fileName)
         val model = JaniModelMapper().readValue(f.toFile(), Model::class.java).toSMDP(
             mapOf(
@@ -34,7 +34,7 @@ class JaniLazyTest {
             if (property is SMDPProperty.ProbabilityProperty || property is SMDPProperty.ProbabilityThresholdProperty) {
                 val (task, modifiedSmdp) = extractSMDPReachabilityTask(property)
                 val smdp = modifiedSmdp ?: model
-                //if (property.name != "c2") continue
+                //if (property.name != "GaveUp") continue
                 if(smdp.getAllVars().size < 30) {
                     ImmutableValuation.experimental = true
                     ImmutableValuation.declOrder = smdp.getAllVars().toTypedArray()
@@ -44,8 +44,8 @@ class JaniLazyTest {
                 val exact = true
                 val exactError = true
                 val game = false
-                val merge = true
-                val algorithm = SMDPLazyChecker.Algorithm.BRTDP
+                val merge = false
+                val algorithm = Algorithm.VI
                 val useQualitativePreprocessing = true
 
                 val result = SMDPLazyChecker(
@@ -99,7 +99,7 @@ class JaniLazyTest {
                                 val (task, modifiedSmdp) = extractSMDPReachabilityTask(property, model)
                                 val smdp = modifiedSmdp ?: model
                                 val result = SMDPLazyChecker(
-                                    solver, itpSolver, ucSolver, SMDPLazyChecker.Algorithm.BRTDP,
+                                    solver, itpSolver, ucSolver, Algorithm.BRTDP,
                                     brtdpStrategy = BRTDPStrategy.DIFF_BASED,
                                     useMayStandard = true,
                                     useMustStandard = false,

@@ -1,4 +1,4 @@
-package hu.bme.mit.theta.prob.analysis.lazy
+package hu.bme.mit.theta.prob.analysis.asglazy
 
 import hu.bme.mit.theta.analysis.Trace
 import hu.bme.mit.theta.analysis.TransFunc
@@ -143,7 +143,7 @@ class SMDPPredDomain(
     }
 
     override fun blockSeq(
-        nodes: List<ProbLazyChecker<SMDPState<ExplState>, SMDPState<PredState>, SMDPCommandAction>.Node>,
+        nodes: List<ASGLazyChecker<SMDPState<ExplState>, SMDPState<PredState>, SMDPCommandAction>.Node>,
         guards: List<Expr<BoolType>>,
         actions: List<SMDPCommandAction>,
         toBlockAtLast: Expr<BoolType>

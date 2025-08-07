@@ -1,4 +1,4 @@
-package hu.bme.mit.theta.prob.analysis.lazy
+package hu.bme.mit.theta.prob.analysis.asglazy
 
 import hu.bme.mit.theta.analysis.expl.ExplInitFunc
 import hu.bme.mit.theta.analysis.expl.ExplPrec
@@ -19,8 +19,8 @@ import hu.bme.mit.theta.solver.Solver
 import hu.bme.mit.theta.solver.UCSolver
 
 typealias SMDPLazyCheckerGame<S> = StochasticGame<
-        ProbLazyChecker<SMDPState<ExplState>, SMDPState<S>, SMDPCommandAction>.Node,
-        ProbLazyChecker<SMDPState<ExplState>, SMDPState<S>, SMDPCommandAction>.Edge
+        ASGLazyChecker<SMDPState<ExplState>, SMDPState<S>, SMDPCommandAction>.Node,
+        ASGLazyChecker<SMDPState<ExplState>, SMDPState<S>, SMDPCommandAction>.Edge
         >
 
 class SMDPLazyChecker(
@@ -107,7 +107,7 @@ class SMDPLazyChecker(
     fun getInnerCheckerExpl(
         smdp: SMDP,
         smdpReachabilityTask: SMDPReachabilityTask
-    ): ProbLazyChecker<SMDPState<ExplState>, SMDPState<ExplState>, SMDPCommandAction> {
+    ): ASGLazyChecker<SMDPState<ExplState>, SMDPState<ExplState>, SMDPCommandAction> {
         fun targetCommands(locs: List<SMDP.Location>) = listOf(
             ProbabilisticCommand(
                 smdpReachabilityTask.targetExpr, FiniteDistribution.dirac(
@@ -142,7 +142,7 @@ class SMDPLazyChecker(
 
         val explDomain = SMDPExplDomain(domainTransFunc, fullPrec, itpSolver)
 
-        return ProbLazyChecker(
+        return ASGLazyChecker(
             ::commandsWithPrecondition, { targetCommands(it.locs) },
             fullInit.first(), topInit.first(),
             explDomain,
@@ -163,7 +163,7 @@ class SMDPLazyChecker(
     fun getInnerCheckerPred(
         smdp: SMDP,
         smdpReachabilityTask: SMDPReachabilityTask
-    ): ProbLazyChecker<SMDPState<ExplState>, SMDPState<PredState>, SMDPCommandAction> {
+    ): ASGLazyChecker<SMDPState<ExplState>, SMDPState<PredState>, SMDPCommandAction> {
 
         fun targetCommands(locs: List<SMDP.Location>) = listOf(
             ProbabilisticCommand(
@@ -205,7 +205,7 @@ class SMDPLazyChecker(
             }
 
         val predDomain = SMDPPredDomain(domainTransFunc, fullPrec, smtSolver, itpSolver, ucSolver, false, exprSplitter)
-        return ProbLazyChecker(
+        return ASGLazyChecker(
             ::commandsWithPrecondition, { targetCommands(it.locs) },
             fullInit.first(), topInit.first(),
             predDomain,

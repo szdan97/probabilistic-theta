@@ -1,4 +1,4 @@
-package hu.bme.mit.theta.prob.analysis.lazy
+package hu.bme.mit.theta.prob.analysis.asglazy
 
 import com.google.common.base.Stopwatch
 import hu.bme.mit.theta.analysis.expr.ExprState
@@ -23,7 +23,10 @@ import java.util.concurrent.TimeUnit
 import kotlin.collections.set
 import kotlin.math.min
 
-class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
+/**
+ * Implements lazy abstraction refinement with Adaptive Simulation Graphs
+ */
+class ASGLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     // Model properties
     val getStdCommands: (SC) -> Collection<ProbabilisticCommand<A>>,
     val getErrorCommands: (SC) -> Collection<ProbabilisticCommand<A>>,
@@ -120,7 +123,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         }
 
         override fun expand(): ExpansionResult<Node> {
-            return this@ProbLazyChecker.expand(
+            return this@ASGLazyChecker.expand(
                 this,
                 getStdCommands(this.sc),
                 getErrorCommands(this.sc),
@@ -356,7 +359,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
          */
         fun getDescendants(): List<Node> {
             val children = getChildren()
-            return children + children.flatMap(ProbLazyChecker<SC, SA, A>.Node::getDescendants)
+            return children + children.flatMap(ASGLazyChecker<SC, SA, A>.Node::getDescendants)
         }
     }
 
@@ -395,7 +398,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
     fun findMEC(
         root: Node,
-        initAvailableEdges: (Node) -> List<Edge> = ProbLazyChecker<SC, SA, A>.Node::getOutgoingEdges
+        initAvailableEdges: (Node) -> List<Edge> = ASGLazyChecker<SC, SA, A>.Node::getOutgoingEdges
     ): Set<Node> {
         fun findSCC(root: Node, availableEdges: (Node) -> List<Edge>): Set<Node> {
             val stack = Stack<Node>()
@@ -438,7 +441,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         do {
             val prevSCC = scc
             scc = findSCC(root, availableEdges)
-            availableEdges = { n: ProbLazyChecker<SC, SA, A>.Node ->
+            availableEdges = { n: ASGLazyChecker<SC, SA, A>.Node ->
                 initAvailableEdges(n).filter { it.targetList.all { it.second in scc } }
             }
         } while (scc.size != prevSCC.size)

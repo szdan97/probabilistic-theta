@@ -1,4 +1,4 @@
-package hu.bme.mit.theta.prob.analysis.lazy
+package hu.bme.mit.theta.prob.analysis.asglazy
 
 import hu.bme.mit.theta.analysis.TransFunc
 import hu.bme.mit.theta.analysis.expl.*
@@ -52,7 +52,7 @@ class SimpleCommandsLazy(
         val vars = initValuation.decls.filterIsInstance<VarDecl<*>>()
         val fullPrec = ExplPrec.of(vars)
         val explDomain = ExplDomain(concreteTransFunc, fullPrec)
-        val checker = ProbLazyChecker(
+        val checker = ASGLazyChecker(
             {commands}, {errorCommands},
             ExplState.of(initValuation), ExplState.top(), explDomain, goal
         )
@@ -125,7 +125,7 @@ class SimpleCommandsLazy(
         }
 
         override fun blockSeq(
-            nodes: List<ProbLazyChecker<ExplState, ExplState, BasicStmtAction>.Node>,
+            nodes: List<ASGLazyChecker<ExplState, ExplState, BasicStmtAction>.Node>,
             guards: List<Expr<BoolType>>,
             actions: List<BasicStmtAction>,
             toBlockAtLast: Expr<BoolType>
@@ -217,7 +217,7 @@ class SimpleCommandsLazy(
         }
 
         override fun blockSeq(
-            nodes: List<ProbLazyChecker<ExplState, PredState, BasicStmtAction>.Node>,
+            nodes: List<ASGLazyChecker<ExplState, PredState, BasicStmtAction>.Node>,
             guards: List<Expr<BoolType>>,
             actions: List<BasicStmtAction>,
             toBlockAtLast: Expr<BoolType>

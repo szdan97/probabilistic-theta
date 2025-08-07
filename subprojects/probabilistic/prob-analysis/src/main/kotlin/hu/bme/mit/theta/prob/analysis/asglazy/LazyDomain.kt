@@ -1,4 +1,4 @@
-package hu.bme.mit.theta.prob.analysis.lazy
+package hu.bme.mit.theta.prob.analysis.asglazy
 
 import hu.bme.mit.theta.analysis.expr.ExprState
 import hu.bme.mit.theta.analysis.expr.StmtAction
@@ -16,7 +16,7 @@ interface LazyDomain<SC: ExprState, SA: ExprState, A: StmtAction> {
     fun block(abstrState: SA, expr: Expr<BoolType>, concrState: SC): SA
 
     fun blockSeq(
-        nodes: List<ProbLazyChecker<SC, SA, A>.Node>,
+        nodes: List<ASGLazyChecker<SC, SA, A>.Node>,
         guards: List<Expr<BoolType>>,
         actions: List<A>,
         toBlockAtLast: Expr<BoolType>): List<SA>

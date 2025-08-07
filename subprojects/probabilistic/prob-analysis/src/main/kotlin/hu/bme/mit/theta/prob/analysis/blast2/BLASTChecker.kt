@@ -18,44 +18,6 @@ import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
 import hu.bme.mit.theta.probabilistic.gamesolvers.VISolver
 import java.util.*
 
-interface BLASTGameNode<
-        Self: BLASTGameNode<Self,U,D,A,P,GA>,
-        U: PARTUnit<U, D, A, P>, D : ExprState, A : StmtAction, P : Prec,
-        GA
-        > {
-    /**
-     * Returns the unit which this node corresponds to, if it originates from a unit
-     * (generally, this is true exactly for the state nodes), or null otherwise.
-     */
-    fun getOriginUnit(): U? = null
-
-    /**
-     * Must be true only for nodes directly corresponding to a PART Unit (i.e. getOriginUnit() != null)
-     * If true, then an expression can be computed using computeNumericRefinement, whose knowledge would make
-     * the numerical bounds tighter.
-     */
-    fun isRefinable(
-        L: Map<Self, Double>,
-        LStrategy: Map<Self, GA>,
-        U: Map<Self, Double>,
-        UStrategy: Map<Self, GA>,
-        tolerance: Double
-    ): Boolean = false
-
-    /**
-     * Returns an expression whose knowledge would make the value bounds tighter.
-     * Only computes the relevant expression, does not change the node or the related unit.
-     * Might throw an exception if isRefinable() is false.
-     */
-    fun computeNumericRefinement(
-        L: Map<Self, Double>,
-        LStrategy: Map<Self, GA>,
-        U: Map<Self, Double>,
-        UStrategy: Map<Self, GA>,
-        tolerance: Double,
-    ): Expr<BoolType> = throw UnsupportedOperationException("Non-refinable node")
-}
-
 class BLASTChecker<U : PARTUnit<U, D, A, P>, D : ExprState, A : StmtAction, P : Prec,
         GameNode: BLASTGameNode<GameNode, U, D, A, P, GameAction>, GameAction>(
     val concreteInit: Valuation,
@@ -212,17 +174,6 @@ class BLASTChecker<U : PARTUnit<U, D, A, P>, D : ExprState, A : StmtAction, P : 
         require(initStates.size == 1) { "Only a single abstract init state is supported for now" }
         val initState = initStates.first()
         return initState
-    }
-
-    fun doInitialExploration(
-        initPrec: P
-    ): U {
-        val initState = getInitState(initPrec)
-        val root = createUnit(initState, initPrec)
-        val q = ArrayDeque<U>()
-        q.add(root)
-        explore(root, hashSetOf(root), q)
-        return root
     }
 
     fun check(

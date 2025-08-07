@@ -30,6 +30,8 @@ import hu.bme.mit.theta.core.utils.ExprUtils
 import hu.bme.mit.theta.core.utils.PathUtils
 import hu.bme.mit.theta.prob.analysis.Algorithm
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
+import hu.bme.mit.theta.prob.analysis.asglazy.SMDPLazyChecker
+import hu.bme.mit.theta.prob.analysis.asglazy.SMDPLazyChecker.BRTDPStrategy.*
 import hu.bme.mit.theta.prob.analysis.besttransformer.*
 import hu.bme.mit.theta.prob.analysis.besttransformer.PivotSelectionStrategy
 import hu.bme.mit.theta.prob.analysis.blast2.SMDPBLASTCheckerConfigs
@@ -38,8 +40,6 @@ import hu.bme.mit.theta.prob.analysis.direct.SMDPDirectCheckerGame
 import hu.bme.mit.theta.prob.analysis.jani.*
 import hu.bme.mit.theta.prob.analysis.jani.model.Model
 import hu.bme.mit.theta.prob.analysis.jani.model.json.JaniModelMapper
-import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker
-import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.BRTDPStrategy.*
 import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.ExplLinkedTransFunc
 import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.LinkedTransFunc
 import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.PredLinkedTransFunc
@@ -209,10 +209,8 @@ class JaniCLI : CliktCommand() {
 
                 val result = when (abstraction) {
                     AbstractionMethod.LAZY, AbstractionMethod.MENU_LAZY -> lazy(solver, itpSolver, ucSolver, task, smdp)
-                    AbstractionMethod.MENU -> menu(solver, itpSolver, ucSolver, task, smdp)
-                    AbstractionMethod.BT -> bestTransformer(solver, itpSolver, ucSolver, task, smdp)
-                    AbstractionMethod.MENU_BLAST -> TODO()
-                    AbstractionMethod.BT_BLAST -> TODO()
+                    AbstractionMethod.MENU, AbstractionMethod.MENU_BLAST -> menu(solver, itpSolver, ucSolver, task, smdp)
+                    AbstractionMethod.BT, AbstractionMethod.BT_BLAST -> bestTransformer(solver, itpSolver, ucSolver, task, smdp)
                 }
                 log("result: ${prop.name}: $result", true)
             } else if(prop is SMDPProperty.ExpectationProperty && domain == NONE) {
@@ -252,7 +250,7 @@ class JaniCLI : CliktCommand() {
         itpSolver: ItpSolver,
         ucSolver: UCSolver,
         task: SMDPReachabilityTask,
-        model: SMDP,
+        model: SMDP
     ) : Double {
         val traceChecker =
             if(sequenceInterpolation) ExprTraceSeqItpChecker.create(model.getFullInitExpr(), BoolExprs.True(), itpSolver)
@@ -278,7 +276,6 @@ class JaniCLI : CliktCommand() {
                     {
                         this.join(PredPrec.of(exprSplitter.apply(it)))
                     },
-
                     eliminateSpurious,
                     traceChecker,
                     ItpRefToPredPrec(exprSplitter),
@@ -435,7 +432,7 @@ class JaniCLI : CliktCommand() {
                     eliminateSpurious,
                     traceChecker,
                     ItpRefToPredPrec(exprSplitter),
-                    abstraction == AbstractionMethod.MENU_BLAST,
+                    abstraction == AbstractionMethod.BT_BLAST,
                     { p: PredPrec, e: Expr<BoolType> -> p.join(PredPrec.of(exprSplitter.apply(e))) },
                     PredOrd.create(solver),
                     SMDPBLASTCheckerConfigs.smdpPredRefute(itpSolver)
@@ -457,7 +454,7 @@ class JaniCLI : CliktCommand() {
                 eliminateSpurious,
                 traceChecker,
                 ItpRefToExplPrec(),
-                abstraction == AbstractionMethod.MENU_BLAST,
+                abstraction == AbstractionMethod.BT_BLAST,
                 { p: ExplPrec, e: Expr<BoolType> -> p.join(ExplPrec.of(ExprUtils.getVars(e))) },
                 ExplOrd.getInstance(),
                 SMDPBLASTCheckerConfigs::smdpExplRefute

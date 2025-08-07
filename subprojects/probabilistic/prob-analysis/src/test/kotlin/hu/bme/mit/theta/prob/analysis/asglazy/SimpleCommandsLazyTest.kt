@@ -1,4 +1,4 @@
-package hu.bme.mit.theta.prob.analysis.lazy
+package hu.bme.mit.theta.prob.analysis.asglazy
 
 import hu.bme.mit.theta.core.decl.Decls
 import hu.bme.mit.theta.core.model.ImmutableValuation

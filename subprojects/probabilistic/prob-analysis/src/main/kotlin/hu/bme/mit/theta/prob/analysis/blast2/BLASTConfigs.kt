@@ -14,6 +14,7 @@ import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.core.utils.ExprUtils
 import hu.bme.mit.theta.core.utils.PathUtils
+import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.prob.analysis.besttransformer.*
 import hu.bme.mit.theta.prob.analysis.jani.*
 import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.ExplLinkedTransFunc
@@ -198,8 +199,9 @@ object SMDPBLASTCheckerConfigs {
         targetExpr: Expr<BoolType>,
         refute: (SMDPState<D>, Expr<BoolType>) -> Expr<BoolType>,
         refinePrec: (P, Expr<BoolType>) -> P,
-        quantSolver: StochasticGameSolver<SMDPGenericBTNode<D, P>, SMDPGenericBTAction<D, P>>
-    ): BLASTChecker<
+        quantSolver: StochasticGameSolver<SMDPGenericBTNode<D, P>, SMDPGenericBTAction<D, P>>,
+        getGuardSatisfactionConfigs: (SMDPState<D>, List<ProbabilisticCommand<SMDPCommandAction>>) -> List<List<ProbabilisticCommand<SMDPCommandAction>>>
+        ): BLASTChecker<
             BTUnit<SMDPState<D>, SMDPCommandAction, P>, SMDPState<D>,
             SMDPCommandAction, P, SMDPGenericBTNode<D,P>, SMDPGenericBTAction<D,P>
             > {
@@ -222,7 +224,7 @@ object SMDPBLASTCheckerConfigs {
                 BTUnit(
                     s, p,
                     partialOrd, lts,
-                    transFunc
+                    transFunc, getGuardSatisfactionConfigs
                 )
             }, targetExpr, maySatisfy, refute,
             {v, e -> XtaExplUtils.interpolate(v, e).toExpr()},
@@ -273,7 +275,8 @@ object SMDPBLASTCheckerConfigs {
             maySatisfy, targetExpr,
             ::smdpExplRefute,
             refinePrec,
-            quantSolver
+            quantSolver,
+            smdpGetGuardSatisfactionConfigs(explGetGuardSatisfactionConfigs(solver))
         )
     }
 
@@ -323,7 +326,8 @@ object SMDPBLASTCheckerConfigs {
             maySatisfy, targetExpr,
             refute,
             refinePrec,
-            quantSolver
+            quantSolver,
+            smdpGetGuardSatisfactionConfigs(predGetGuardSatisfactionConfigs(solver))
         )
     }
 

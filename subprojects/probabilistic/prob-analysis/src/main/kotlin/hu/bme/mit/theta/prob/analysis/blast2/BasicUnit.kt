@@ -67,11 +67,11 @@ abstract class BasicUnit<Self : BasicUnit<Self, D, A, P>, D : ExprState, A : Stm
 
     override fun getSupportPrecision() = supportPrec
 
-    override fun removeSubtree(): RemovedAndUnlabeledNodes<Self> {
+    override fun removeSubtree(): RemovedAndUnmarkedNodes<Self> {
         val unmarkedUnits = hashSetOf<Self>()
         val removedUnits = hashSetOf<Self>()
         removeSubtreeHelper(removedUnits = removedUnits, unmarkedUnits =  unmarkedUnits)
-        return RemovedAndUnlabeledNodes(removedNodes = removedUnits, unmarkedNodes = unmarkedUnits)
+        return RemovedAndUnmarkedNodes(removedNodes = removedUnits, unmarkedNodes = unmarkedUnits)
     }
 
     protected fun removeSubtreeHelper(
@@ -95,20 +95,25 @@ abstract class BasicUnit<Self : BasicUnit<Self, D, A, P>, D : ExprState, A : Stm
 
     protected abstract fun clearIntermediateNodes()
 
-    override fun refineState(newState: D): RemovedAndUnlabeledNodes<Self> {
+    override fun refineState(newState: D): RemovedAndUnmarkedNodes<Self> {
         stateLabel = newState
         val removedUnits = hashSetOf<Self>()
-        val unlabeledUnits = hashSetOf<Self>()
+        val unmarkedNodes = hashSetOf<Self>()
         for (coveredUnit in coveredUnits) {
             if (!canCover(coveredUnit)) {
                 coveredUnit.removeCover()
-                unlabeledUnits.add(coveredUnit)
+                unmarkedNodes.add(coveredUnit)
             }
         }
-        return RemovedAndUnlabeledNodes(removedUnits, unlabeledUnits)
+        val cleanUpResult = cleanUpSuccessors()
+        removedUnits.addAll(cleanUpResult.removedNodes)
+        unmarkedNodes.addAll(cleanUpResult.unmarkedNodes)
+        return RemovedAndUnmarkedNodes(removedUnits, unmarkedNodes)
         // TODO: for now, we do not directly reexpand or relabel here. The current BLAST implementation is compatible with this
         //  decision, especially as it never uses refineState().
     }
+
+    abstract fun cleanUpSuccessors(): RemovedAndUnmarkedNodes<Self>
 
     fun isTarget(originalGoal: Goal, abstractionGoal: Goal) =
         (mustBeTarget()

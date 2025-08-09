@@ -86,4 +86,27 @@ class MENUUnit<D : ExprState, A : StmtAction, P : Prec>(
     override fun clearIntermediateNodes() {
         intermediateNodes.clear()
     }
+
+    override fun cleanUpSuccessors(): RemovedAndUnmarkedNodes<MENUUnit<D, A, P>> {
+        val removedUnits = hashSetOf<MENUUnit<D, A, P>>()
+        val unmarkedUnits = hashSetOf<MENUUnit<D, A, P>>()
+        for ((command, node) in intermediateNodes.toList()) {
+            if(!maySatisfy(this.stateLabel, command.guard)) {
+                for ((_, successor) in node.successorDistros.flatMap { it.support }) {
+                    val singleRemovalResult = successor.removeSubtree()
+                    removedUnits.addAll(singleRemovalResult.removedNodes)
+                    unmarkedUnits.addAll(singleRemovalResult.unmarkedNodes)
+                    successor.removeCover()
+                    for (coveredUnit in successor.coveredUnits) {
+                        coveredUnit.removeCover()
+                        if(coveredUnit !in removedUnits) unmarkedUnits.add(coveredUnit)
+                    }
+                    removedUnits.add(successor)
+                }
+                intermediateNodes.remove(command)
+            }
+        }
+        unmarkedUnits.removeAll(removedUnits)
+        return RemovedAndUnmarkedNodes(removedNodes = removedUnits, unmarkedNodes = unmarkedUnits)
+    }
 }

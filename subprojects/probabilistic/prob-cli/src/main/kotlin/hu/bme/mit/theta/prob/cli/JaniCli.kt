@@ -484,7 +484,7 @@ class JaniCLI : CliktCommand() {
         useBLAST: Boolean = false,
         refinePrec: (P, Expr<BoolType>) -> P,
         domainPartialOrd: PartialOrd<D>,
-        refute: (SMDPState<D>, Expr<BoolType>) -> Expr<BoolType>
+        refute: (SMDPState<D>, Expr<BoolType>) -> Expr<BoolType>,
     ): Double {
         val lts = SmdpCommandLts<D>(model)
         val initFunc = SmdpInitFunc<D, P>(domainInitFunc, model)
@@ -511,9 +511,10 @@ class JaniCLI : CliktCommand() {
         if(useBLAST) {
             val smdpOrd = SmdpOrd(domainPartialOrd)
             val checker = SMDPBLASTCheckerConfigs.BT_GENERIC(
-                task.goal,  getFullInit(model, solver), initFunc, smdpOrd, lts,
+                task.goal, getFullInit(model, solver), initFunc, smdpOrd, lts,
                 transFunc, maySatisfy, task.targetExpr, refute,
-                refinePrec, createSGSolver(algorithm, threshold)
+                refinePrec, createSGSolver(algorithm, threshold),
+                getGuardSatisfactionConfigs
             )
             return checker.check(initPrec, task.goal, threshold).first
         }

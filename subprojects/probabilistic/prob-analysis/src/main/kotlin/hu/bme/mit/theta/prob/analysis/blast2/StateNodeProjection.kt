@@ -28,12 +28,12 @@ class ProjectedStateNode<D : ExprState, A : StmtAction, P : Prec>(
         return reverseTrace.reversed()
     }
 
-    fun removeSubtree(): RemovedAndUnlabeledNodes<ProjectedStateNode<D, A, P>> {
+    fun removeSubtree(): RemovedAndUnmarkedNodes<ProjectedStateNode<D, A, P>> {
         val unmarkedNodes = hashSetOf<ProjectedStateNode<D, A, P>>()
         val removedNodes = hashSetOf<ProjectedStateNode<D, A, P>>()
         removeSubtreeHelper(removedNodes = removedNodes, unmarkedNodes = unmarkedNodes)
         origin.removeSubtree()
-        return RemovedAndUnlabeledNodes(removedNodes = removedNodes, unmarkedNodes = unmarkedNodes)
+        return RemovedAndUnmarkedNodes(removedNodes = removedNodes, unmarkedNodes = unmarkedNodes)
     }
 
     /**

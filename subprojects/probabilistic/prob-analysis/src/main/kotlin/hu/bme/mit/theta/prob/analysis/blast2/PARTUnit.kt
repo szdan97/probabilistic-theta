@@ -34,7 +34,7 @@ interface PARTUnit<Self : PARTUnit<Self, D, A, P>, D : ExprState, A : StmtAction
      * (e.g. when some command becomes universally disabled with the finer state).
      * These are collected in the result.
      */
-    fun refineState(newState: D): RemovedAndUnlabeledNodes<Self>
+    fun refineState(newState: D): RemovedAndUnmarkedNodes<Self>
     fun refineSupportPrecision(newPrecision: P)
     fun getCoverer(): Self?
     fun getCoveredUnits(): List<Self>
@@ -50,7 +50,7 @@ interface PARTUnit<Self : PARTUnit<Self, D, A, P>, D : ExprState, A : StmtAction
     fun mustBeTarget(): Boolean
 
     // fun remove()
-    fun removeSubtree(): RemovedAndUnlabeledNodes<Self>
+    fun removeSubtree(): RemovedAndUnmarkedNodes<Self>
 
     fun stateNodeProjection(): ProjectedStateNode<D, A, P> = ProjectedStateNode(this)
 

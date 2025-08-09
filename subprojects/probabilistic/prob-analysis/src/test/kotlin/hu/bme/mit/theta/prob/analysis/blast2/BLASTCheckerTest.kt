@@ -177,7 +177,7 @@ class BLASTCheckerTest {
             fullInit, explInit,
             {s,p -> BTUnit(s, p,
                 ExplOrd.getInstance(), explLts,
-                explBTTransFunc,// ::explMaySatisfy,
+                explBTTransFunc, explGetGuardSatisfactionConfigs(solver)
             ) },
             targetExpr,
             ::explMaySatisfy,
@@ -309,7 +309,7 @@ class BLASTCheckerTest {
             fullInit, predInit,
             {s,p -> BTUnit(s, p,
                 PredOrd.create(solver), predLts,
-                predBTTransFunc,// ::explMaySatisfy,
+                predBTTransFunc, predGetGuardSatisfactionConfigs(solver)
             ) },
             targetExpr,
             predMaySatisfy(solver),

@@ -9,7 +9,7 @@ import hu.bme.mit.theta.core.type.booltype.BoolExprs.*
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.prob.analysis.jani.*
 import hu.bme.mit.theta.prob.analysis.Algorithm.*
-import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.BRTDPStrategy.*
+import hu.bme.mit.theta.prob.analysis.asglazy.SMDPLazyChecker.BRTDPStrategy.*
 import hu.bme.mit.theta.probabilistic.*
 import hu.bme.mit.theta.probabilistic.gamesolvers.ExpandableNode
 import hu.bme.mit.theta.probabilistic.gamesolvers.ExpansionResult

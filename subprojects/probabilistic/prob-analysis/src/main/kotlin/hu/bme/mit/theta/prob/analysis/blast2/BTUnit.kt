@@ -16,7 +16,10 @@ class BTUnit<D : ExprState, A : StmtAction, P : Prec>(
     supportPrec: P,
     partialOrder: PartialOrd<D>,
     val lts: ProbabilisticCommandLTS<D, A>,
-    val transFunc: BestTransformerTransFunc<D, A, P>
+    val transFunc: BestTransformerTransFunc<D, A, P>,
+    val getGuardSatisfactionConfigs:
+        (D, List<ProbabilisticCommand<A>>) ->
+    List<List<ProbabilisticCommand<A>>>
 ) : BasicUnit<BTUnit<D, A, P>, D, A, P>(state, supportPrec, partialOrder) {
 
     inner class IntermediateNode(
@@ -42,7 +45,8 @@ class BTUnit<D : ExprState, A : StmtAction, P : Prec>(
                         val (action, state) = it
                         val successorUnit = BTUnit(
                             state, this.supportPrec,
-                            this.partialOrder, this.lts, this.transFunc
+                            this.partialOrder, this.lts, this.transFunc,
+                            this.getGuardSatisfactionConfigs
                         )
                         successorUnits.add(successorUnit)
                         return@transform action to successorUnit
@@ -70,5 +74,36 @@ class BTUnit<D : ExprState, A : StmtAction, P : Prec>(
 
     override fun clearIntermediateNodes() {
         intermediateNodes.clear()
+    }
+
+    override fun cleanUpSuccessors(): RemovedAndUnmarkedNodes<BTUnit<D, A, P>> {
+        // If this has not been expanded yet, we do not want to compute the guard sat configs
+        if(intermediateNodes.isNotEmpty()) {
+            val commands = lts.getAvailableCommands(this.getState()).toList()
+            val newGuardSatConfigs = getGuardSatisfactionConfigs(this.getState(), commands)
+                .map { it.toSet() }
+            val removedUnits = hashSetOf<BTUnit<D, A, P>>()
+            val unmarkedUnits = hashSetOf<BTUnit<D, A, P>>()
+            for (intermediateNode in intermediateNodes.toList()) { // toList to copy
+                val guardConfig = intermediateNode.results.keys.toSet()
+                if(!newGuardSatConfigs.contains(guardConfig)) {
+                    for ((_, successor) in intermediateNode.results.flatMap { it.value.support }) {
+                        val singleRemovalResult = successor.removeSubtree()
+                        removedUnits.addAll(singleRemovalResult.removedNodes)
+                        unmarkedUnits.addAll(singleRemovalResult.unmarkedNodes)
+                        successor.removeCover()
+                        for (coveredUnit in successor.coveredUnits) {
+                            coveredUnit.removeCover()
+                            if(coveredUnit !in removedUnits) unmarkedUnits.add(coveredUnit)
+                        }
+                        removedUnits.add(successor)
+                    }
+                    intermediateNodes.remove(intermediateNode)
+                }
+            }
+            unmarkedUnits.removeAll(removedUnits) // just to be sure
+            return RemovedAndUnmarkedNodes(removedNodes = removedUnits, unmarkedNodes = unmarkedUnits)
+        }
+        return RemovedAndUnmarkedNodes(listOf(), listOf())
     }
 }

@@ -54,7 +54,7 @@ object SMDPBLASTCheckerConfigs {
         transFunc: MenuGameTransFunc<SMDPState<D>, SMDPCommandAction, P>,
         maySatisfy: (SMDPState<D>, Expr<BoolType>) -> Boolean,
         targetExpr: Expr<BoolType>,
-        refute: (SMDPState<D>, Expr<BoolType>) -> Expr<BoolType>,
+        itpSolver: ItpSolver, //refute: (SMDPState<D>, Expr<BoolType>) -> Expr<BoolType>,
         refinePrec: (P, Expr<BoolType>) -> P,
         quantSolver: StochasticGameSolver<SMDPGenericMenuNode<D, P>, SMDPGenericMenuAction<D, P>>
     ): BLASTChecker<
@@ -82,7 +82,7 @@ object SMDPBLASTCheckerConfigs {
                     partialOrd, lts,
                     transFunc, maySatisfy
                 )
-            }, targetExpr, maySatisfy, refute,
+            }, targetExpr, maySatisfy, itpSolver, //refute,
             {v, e -> XtaExplUtils.interpolate(v, e).toExpr()},
             refinePrec, ::BlastMenuGame, quantSolver,
             LReward, UReward,
@@ -99,6 +99,7 @@ object SMDPBLASTCheckerConfigs {
 
         // Dependencies
         solver: Solver,
+        itpSolver: ItpSolver
     ): BLASTChecker<
             MENUUnit<SMDPState<ExplState>, SMDPCommandAction, ExplPrec>, SMDPState<ExplState>,
             SMDPCommandAction, ExplPrec, SMDPExplMenuNode, SMDPExplMenuAction
@@ -130,7 +131,7 @@ object SMDPBLASTCheckerConfigs {
             goal, fullInit, initFunc,
             pord, lts, transFunc,
             maySatisfy, targetExpr,
-            ::smdpExplRefute,
+            itpSolver,
             refinePrec,
             quantSolver
         )
@@ -181,7 +182,7 @@ object SMDPBLASTCheckerConfigs {
             goal, fullInit, initFunc,
             pord, lts, transFunc,
             maySatisfy, targetExpr,
-            refute,
+            itpSolver,
             refinePrec,
             quantSolver
         )
@@ -197,7 +198,7 @@ object SMDPBLASTCheckerConfigs {
         transFunc: BestTransformerTransFunc<SMDPState<D>, SMDPCommandAction, P>,
         maySatisfy: (SMDPState<D>, Expr<BoolType>) -> Boolean,
         targetExpr: Expr<BoolType>,
-        refute: (SMDPState<D>, Expr<BoolType>) -> Expr<BoolType>,
+        itpSolver: ItpSolver,
         refinePrec: (P, Expr<BoolType>) -> P,
         quantSolver: StochasticGameSolver<SMDPGenericBTNode<D, P>, SMDPGenericBTAction<D, P>>,
         getGuardSatisfactionConfigs: (SMDPState<D>, List<ProbabilisticCommand<SMDPCommandAction>>) -> List<List<ProbabilisticCommand<SMDPCommandAction>>>
@@ -226,7 +227,7 @@ object SMDPBLASTCheckerConfigs {
                     partialOrd, lts,
                     transFunc, getGuardSatisfactionConfigs
                 )
-            }, targetExpr, maySatisfy, refute,
+            }, targetExpr, maySatisfy, itpSolver,
             {v, e -> XtaExplUtils.interpolate(v, e).toExpr()},
             refinePrec, ::BLASTBTGame, quantSolver,
             LReward, UReward,
@@ -243,6 +244,7 @@ object SMDPBLASTCheckerConfigs {
 
         // Dependencies
         solver: Solver,
+        itpSolver: ItpSolver
     ): BLASTChecker<
             BTUnit<SMDPState<ExplState>, SMDPCommandAction, ExplPrec>, SMDPState<ExplState>,
             SMDPCommandAction, ExplPrec, SMDPExplBTNode, SMDPExplBTAction
@@ -273,7 +275,7 @@ object SMDPBLASTCheckerConfigs {
             goal, fullInit, initFunc,
             pord, lts, transFunc,
             maySatisfy, targetExpr,
-            ::smdpExplRefute,
+            itpSolver,
             refinePrec,
             quantSolver,
             smdpGetGuardSatisfactionConfigs(explGetGuardSatisfactionConfigs(solver))
@@ -324,7 +326,7 @@ object SMDPBLASTCheckerConfigs {
             goal, fullInit, initFunc,
             pord, lts, transFunc,
             maySatisfy, targetExpr,
-            refute,
+            itpSolver,
             refinePrec,
             quantSolver,
             smdpGetGuardSatisfactionConfigs(predGetGuardSatisfactionConfigs(solver))

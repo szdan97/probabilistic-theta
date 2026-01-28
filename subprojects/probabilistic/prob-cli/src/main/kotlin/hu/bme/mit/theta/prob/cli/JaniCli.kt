@@ -281,8 +281,7 @@ class JaniCLI : CliktCommand() {
                     ItpRefToPredPrec(exprSplitter),
                     abstraction == AbstractionMethod.MENU_BLAST,
                     { p: PredPrec, e: Expr<BoolType> -> p.join(PredPrec.of(exprSplitter.apply(e))) },
-                    PredOrd.create(solver),
-                    SMDPBLASTCheckerConfigs.smdpPredRefute(itpSolver)
+                    PredOrd.create(solver)
                 )
             }
             EXPL -> menuHelper(
@@ -307,7 +306,6 @@ class JaniCLI : CliktCommand() {
                 abstraction == AbstractionMethod.MENU_BLAST,
                 { p: ExplPrec, e: Expr<BoolType> -> p.join(ExplPrec.of(ExprUtils.getVars(e))) },
                 ExplOrd.getInstance(),
-                SMDPBLASTCheckerConfigs::smdpExplRefute
             )
             NONE -> throw IllegalArgumentException("Domain must be selected for menu game abstraction")
         }
@@ -359,7 +357,6 @@ class JaniCLI : CliktCommand() {
         useBLAST: Boolean = false,
         refinePrec: (P, Expr<BoolType>) -> P,
         domainPartialOrd: PartialOrd<D>,
-        refute: (SMDPState<D>, Expr<BoolType>) -> Expr<BoolType>
     ): Double {
         val lts = SmdpCommandLts<D>(model)
         val initFunc = SmdpInitFunc<D, P>(domainInitFunc, model)
@@ -388,7 +385,7 @@ class JaniCLI : CliktCommand() {
             val smdpOrd = SmdpOrd(domainPartialOrd)
             val checker = SMDPBLASTCheckerConfigs.MENU_GENERIC(
                 task.goal,  getFullInit(model, solver), initFunc, smdpOrd, lts,
-                transFunc, maySatisfy, task.targetExpr, refute,
+                transFunc, maySatisfy, task.targetExpr, itpSolver,
                 refinePrec, createSGSolver(algorithm, threshold)
             )
             return checker.check(initPrec, task.goal, threshold).first
@@ -512,7 +509,7 @@ class JaniCLI : CliktCommand() {
             val smdpOrd = SmdpOrd(domainPartialOrd)
             val checker = SMDPBLASTCheckerConfigs.BT_GENERIC(
                 task.goal, getFullInit(model, solver), initFunc, smdpOrd, lts,
-                transFunc, maySatisfy, task.targetExpr, refute,
+                transFunc, maySatisfy, task.targetExpr, itpSolver,
                 refinePrec, createSGSolver(algorithm, threshold),
                 getGuardSatisfactionConfigs
             )

@@ -2,20 +2,21 @@ package hu.bme.mit.theta.prob.analysis.blast2
 
 import hu.bme.mit.theta.analysis.InitFunc
 import hu.bme.mit.theta.analysis.Prec
+import hu.bme.mit.theta.analysis.Trace
 import hu.bme.mit.theta.analysis.expr.ExprState
 import hu.bme.mit.theta.analysis.expr.StmtAction
+import hu.bme.mit.theta.analysis.expr.refinement.ExprTraceBwBinItpChecker
 import hu.bme.mit.theta.core.model.Valuation
-import hu.bme.mit.theta.core.stmt.Stmts
 import hu.bme.mit.theta.core.type.Expr
-import hu.bme.mit.theta.core.type.booltype.BoolLitExpr
+import hu.bme.mit.theta.core.type.booltype.BoolExprs
 import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.core.type.booltype.SmartBoolExprs.Not
-import hu.bme.mit.theta.core.utils.WpState
 import hu.bme.mit.theta.prob.analysis.P_ABSTRACTION
 import hu.bme.mit.theta.prob.analysis.P_CONCRETE
 import hu.bme.mit.theta.probabilistic.*
 import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
 import hu.bme.mit.theta.probabilistic.gamesolvers.VISolver
+import hu.bme.mit.theta.solver.ItpSolver
 import java.util.*
 
 class BLASTChecker<U : PARTUnit<U, D, A, P>, D : ExprState, A : StmtAction, P : Prec,
@@ -25,7 +26,8 @@ class BLASTChecker<U : PARTUnit<U, D, A, P>, D : ExprState, A : StmtAction, P : 
     val createUnit: (state: D, supportPrec: P) -> U,
     val targetExpr: Expr<BoolType>,
     val maySatisfy: (D, Expr<BoolType>) -> Boolean,
-    val refute: (D, Expr<BoolType>) -> Expr<BoolType>,
+    //val refute: (D, Expr<BoolType>) -> Expr<BoolType>,
+    val itpSolver: ItpSolver,
     val refuteConcrete: (Valuation, Expr<BoolType>) -> Expr<BoolType>,
     val refinePrec: (currentPrec: P, refutation: Expr<BoolType>) -> P,
     val rootUnitToGame: (U) -> StochasticGame<GameNode, GameAction>,
@@ -81,7 +83,7 @@ class BLASTChecker<U : PARTUnit<U, D, A, P>, D : ExprState, A : StmtAction, P : 
         trace: List<StateNodeProjectionEdge<D, A, P>>,
         toBlockAtLast: Expr<BoolType>,
         root: ProjectedStateNode<D, A, P>
-    ) = concretizeOrRefineOriginal(trace, toBlockAtLast, root)
+    ) = concretizeOrRefineBwBinITP(trace, toBlockAtLast, root)
 
     private fun keepSubtree(pivotNode: ProjectedStateNode<D, A, P>): Boolean = false
 
@@ -90,54 +92,43 @@ class BLASTChecker<U : PARTUnit<U, D, A, P>, D : ExprState, A : StmtAction, P : 
         val unmarkedNodes: List<ProjectedStateNode<D, A, P>>,
         val removedNodes: List<ProjectedStateNode<D, A, P>>,
         val logicalPivotNode: ProjectedStateNode<D,A,P>?
-    )
+    ) {
+        companion object {
+            fun <D : ExprState, A : StmtAction, P : Prec> Feasible() =
+                RefinementResult<D, A, P>(true, listOf(), listOf(), null)
+        }
+    }
+    private fun concretizeOrRefineBwBinITP(trace: List<StateNodeProjectionEdge<D, A, P>>, toBlockAtLast: Expr<BoolType>, root: ProjectedStateNode<D,A,P>): RefinementResult<D, A, P> {
+        val traceRefiner = ExprTraceBwBinItpChecker.create(concreteInit.toExpr(), toBlockAtLast, itpSolver)
+        val nodes = arrayListOf(root)
+        for (edge in trace) {
+            nodes.add(edge.end)
+        }
+        val states = nodes.map { it.state }
+        val transformedTrace = Trace.of(states, trace.map { it.action })
+        val refRes = traceRefiner.check(transformedTrace)
+        if(refRes.isFeasible) {
+            return RefinementResult.Feasible()
+        }
+        val refutation = refRes.asInfeasible().refutation.toList()
+        val refutationIndex = refutation.indexOfFirst { !it.equals(BoolExprs.True()) }
+        val refutationExpr = refutation[refutationIndex]
+        val pivotIndex = refutationIndex - 1
+        if(pivotIndex >= 0) { // No reinit needed, pruning + support prec change is enough
+            val pivotNode = nodes[pivotIndex]
+            val newPrec = refinePrec(pivotNode.supportPrecision, refutationExpr)
+            pivotNode.origin.refineSupportPrecision(newPrec)
+            val (removedNodes, unmarkedNodes) = pivotNode.removeSubtree()
 
-    private fun concretizeOrRefineOriginal(trace: List<StateNodeProjectionEdge<D, A, P>>, toBlockAtLast: Expr<BoolType>, root: ProjectedStateNode<D,A,P>): RefinementResult<D, A, P> {
-        // Direct implementation based on the algorithm of Henzinger et. al.: Lazy abstraction
-        var badRegion = toBlockAtLast
-        for (i in trace.indices.reversed()) {
-            val currStateNode = trace[i].end
-            val state = currStateNode.state
-            if (maySatisfy(state, badRegion)) {
-                badRegion = WpState.of(badRegion).wep(Stmts.SequenceStmt(trace[i].action.stmts)).expr
-            } else {
-                val pivotNode = trace[i].source
-                val unmarkedNodes = arrayListOf<ProjectedStateNode<D, A, P>>()
-                val removedNodes = arrayListOf<ProjectedStateNode<D, A, P>>()
-                if (keepSubtree(pivotNode)) {
-                    TODO("relabel subtree?")
-                } else {
-                    val res = pivotNode.removeSubtree()
-                    unmarkedNodes.addAll(res.unmarkedNodes)
-                    removedNodes.addAll(res.removedNodes)
-                    val refutation = refute(state, badRegion)
-                    val newPrec = refinePrec(pivotNode.origin.getSupportPrecision(), refutation)
-                    pivotNode.origin.refineSupportPrecision(newPrec)
-                }
-                return RefinementResult(false, unmarkedNodes, removedNodes, pivotNode)
-            }
+            return RefinementResult(false, unmarkedNodes.toList(), removedNodes.toList(), pivotNode)
         }
-        val eval = badRegion.eval(concreteInit)
-        if (!(eval as BoolLitExpr).value) {
-            val pivotNode = root
-            val unmarkedNodes = arrayListOf<ProjectedStateNode<D, A, P>>()
-            val removedNodes = arrayListOf<ProjectedStateNode<D, A, P>>()
-            if (keepSubtree(pivotNode)) {
-                TODO("relabel subtree?")
-            } else {
-                val res = pivotNode.removeSubtree()
-                unmarkedNodes.addAll(res.unmarkedNodes)
-                removedNodes.addAll(res.removedNodes)
-                val refutation = refuteConcrete(concreteInit, badRegion)
-                val newPrec = refinePrec(pivotNode.origin.getSupportPrecision(), refutation)
-                pivotNode.origin.refineSupportPrecision(newPrec)
-                pivotNode.origin.refineState(getInitState(newPrec))
-            }
-            // maybe a reinit function would make more sense later
-            return RefinementResult(false, unmarkedNodes, removedNodes, pivotNode)
-        }
-        // The trace is concretizable
-        return RefinementResult(true, listOf(), listOf(), null)
+        // Reinit needed: The init node must be a more precise abstraction of the concrete init state
+        val pivotNode = root
+        val (removedNodes, unmarkedNodes) = root.removeSubtree()
+        val newPrec = refinePrec(pivotNode.supportPrecision, refutationExpr)
+        root.origin.refineSupportPrecision(newPrec)
+        root.origin.refineState(getInitState(newPrec))
+        return RefinementResult(false, unmarkedNodes.toList(), removedNodes.toList(), pivotNode)
     }
 
     private fun explore(rootUnit: U, reachedSet: MutableCollection<U>, q: ArrayDeque<U>) {

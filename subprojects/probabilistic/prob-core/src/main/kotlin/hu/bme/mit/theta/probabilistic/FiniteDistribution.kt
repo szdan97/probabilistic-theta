@@ -87,3 +87,5 @@ class FiniteDistribution<D>(
         fun <D> dirac(d: D) = FiniteDistribution(d to 1.0)
     }
 }
+
+fun <T> T.dirac() = FiniteDistribution.dirac(this)

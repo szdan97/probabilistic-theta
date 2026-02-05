@@ -3,10 +3,9 @@ package hu.bme.mit.theta.prob.analysis.jani
 import hu.bme.mit.theta.analysis.Prec
 import hu.bme.mit.theta.analysis.TransFunc
 import hu.bme.mit.theta.analysis.expr.ExprState
-import hu.bme.mit.theta.analysis.expr.StmtAction
 
 class SMDPTransFunc<S: ExprState, P: Prec>(
-    val domainTransFunc: TransFunc<S, StmtAction, P>
+    val domainTransFunc: TransFunc<S, in SMDPCommandAction, P>
 ): TransFunc<SMDPState<S>, SMDPCommandAction, P> {
     override fun getSuccStates(
         state: SMDPState<S>,

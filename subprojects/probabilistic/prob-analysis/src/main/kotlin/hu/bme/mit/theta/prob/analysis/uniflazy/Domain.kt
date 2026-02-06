@@ -18,7 +18,7 @@ open class Domain<S: ExprState, A: Action, P: Prec, R, L>(
     val abstractFromValuation: (Valuation, L, P) -> S,
     val abstractFromExpr: (Expr<BoolType>, L, P) -> S,
     val extractStructure: (S) -> L, // Not part of the theoretical description as it is necessary only for structural info
-    val transFunc: TransFunc<S, A, P>,
+    val transFunc: TransFunc<S, in A, in P>,
     val linkedTransFunc: LinkedTransFunc<S, A, P>,
     val maySats: (S, Expr<BoolType>) -> Boolean,
     val mustSats: (S, Expr<BoolType>) -> Boolean,

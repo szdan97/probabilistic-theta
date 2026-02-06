@@ -1,4 +1,4 @@
-package hu.bme.mit.theta.prob.analysis.uniflazy.buildingconfings
+package hu.bme.mit.theta.prob.analysis.uniflazy.buildingconfigs
 
 import hu.bme.mit.theta.analysis.Prec
 import hu.bme.mit.theta.analysis.Trace

@@ -13,13 +13,19 @@ import hu.bme.mit.theta.probabilistic.StochasticGame
 class PART<S : ExprState, A : StmtAction, P : Prec, R, L,
         GN: UnitGameNode<GA> /* Game Node type */, GA /* Game Action type */
         >(
-    val root: PARTUnit<S, A, P, R, L, GN, GA>,
+    val createUnit: (state: S, supportPrec: P, PART: PART<S,A,P,R,L, GN, GA>) -> PARTUnit<S, A, P, R, L, GN, GA>,
     val targetExpr: Expr<BoolType>,
+    val initStructure: L,
     val initExpr: Expr<BoolType>,
+    val initPrec: P,
     val lts: ProbabilisticCommandLTS<S, A>,
     val domain: Domain<S, A, P, R, L>,
     val buildingConfiguration: PARTBuildingConfiguration<S, A, P, R, L, GN, GA>
 ): ImplicitStochasticGame<GN,GA>() {
+    val root = createUnit(
+        domain.abstractFromExpr(initExpr, initStructure, initPrec),
+        initPrec, this
+    )
     val reached: MutableSet<PARTUnit<S, A, P, R, L, GN, GA>> = hashSetOf(root)
     val waitlist: MutableList<PARTUnit<S, A, P, R, L, GN, GA>> = arrayListOf(root)
 

@@ -22,11 +22,11 @@ import hu.bme.mit.theta.solver.Solver
 
 object ExplDomain {
 
-    private fun <R> explDomain(
+    private fun <A: StmtAction, R> explDomain(
         solver: Solver,
         maxEnum: Int,
         refine: (ExplState, R) -> ExplState
-    ) = Domain<ExplState, StmtAction, ExplPrec, R, Unit>(
+    ) = Domain<ExplState, A, ExplPrec, R, Unit>(
         stateOrd = ExplOrd.getInstance(),
         extendPrec = { p, e ->
             p.join(ExplPrec.of(ExprUtils.getVars(e)))
@@ -50,10 +50,10 @@ object ExplDomain {
         getGuardSatisfactionConfigs = explGetGuardSatisfactionConfigs(solver)
     )
 
-    fun ExplDomainWithValRef(
+    fun <A: StmtAction> WithValRef(
         solver: Solver,
         maxEnum: Int = 0
-    ) = explDomain<Valuation>(solver, maxEnum) { s, v ->
+    ) = explDomain<A, Valuation>(solver, maxEnum) { s, v ->
         val sMap = s.`val`.toMap()
         val vMap = v.toMap()
         val newVal = MutableValuation.copyOf(v)
@@ -66,10 +66,10 @@ object ExplDomain {
         ExplState.of(newVal)
     }
 
-    fun ExplDomainWithExprRef(
+    fun <A: StmtAction> ExplDomainWithExprRef(
         solver: Solver,
         maxEnum: Int = 0
-    ) = explDomain<Expr<BoolType>>(solver, maxEnum) { s, e ->
+    ) = explDomain<A, Expr<BoolType>>(solver, maxEnum) { s, e ->
         val combinedExpr = And(s.toExpr(), e)
         ExprStates.createStatesForExpr(
             solver,

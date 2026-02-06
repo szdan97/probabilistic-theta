@@ -16,7 +16,7 @@ class UnifiedLazyChecker<S : ExprState, A : StmtAction, P : Prec, R, L,
         GN : UnitGameNode<GA> /* Game Node type */, GA /* Game Action type */
         >(
     val domain: Domain<S, A, P, R, L>,
-    val createUnit: (state: S, supportPrec: P) -> PARTUnit<S, A, P, R, L, GN, GA>,
+    val createUnit: (state: S, supportPrec: P, PART: PART<S,A,P,R,L, GN, GA>) -> PARTUnit<S, A, P, R, L, GN, GA>,
     val buildingConfiguration: PARTBuildingConfiguration<S, A, P, R, L, GN, GA>,
     val gameSolver: StochasticGameSolver<GN, GA>,
 
@@ -43,16 +43,17 @@ class UnifiedLazyChecker<S : ExprState, A : StmtAction, P : Prec, R, L,
         goal: Goal,
         threshold: Double = 1e-6
     ): Pair<Double, Double> {
-        val initState = domain.abstractFromExpr(initExpr, initStructure, initPrec)
-        val root = createUnit(initState, initPrec)
         val part = PART(
-            root,
+            createUnit,
             targetExpr,
+            initStructure,
             initExpr,
+            initPrec,
             lts,
             domain,
             buildingConfiguration
         )
+        val root = part.root
         while (true) {
             part.explorePART()
             val (game, unitToNodeMap) = part.toGame()

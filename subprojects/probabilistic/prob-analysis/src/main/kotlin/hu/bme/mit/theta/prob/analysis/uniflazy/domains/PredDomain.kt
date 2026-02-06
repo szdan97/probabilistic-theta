@@ -13,11 +13,11 @@ import hu.bme.mit.theta.prob.analysis.menuabstraction.predMustSatisfy
 import hu.bme.mit.theta.prob.analysis.uniflazy.Domain
 import hu.bme.mit.theta.solver.Solver
 
-fun PredDomain(
+fun <A: StmtAction> PredDomain(
     solver: Solver,
     exprSplitter: ExprSplitter,
     predAbstractor: PredAbstractors.PredAbstractor = PredAbstractors.booleanSplitAbstractor(solver)
-) = Domain<PredState, StmtAction, PredPrec, Expr<BoolType>, Unit>(
+) = Domain<PredState, A, PredPrec, Expr<BoolType>, Unit>(
     stateOrd = PredOrd.create(solver),
     extendPrec = { p, e -> p.join(PredPrec.of(exprSplitter.apply(e))) },
     refineState = { s, e ->
